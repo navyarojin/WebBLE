@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Tremor Recorder</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1117;--card:#161b22;--border:#21262d;
+  --fg:#c9d1d9;--muted:#6e7681;--dim:#30363d;
+  --accent:#00d4aa;--warn:#d29922;--danger:#f85149;
+  --x:#f0883e;--y:#00d4aa;--z:#58a6ff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Space Grotesk',sans-serif;background:var(--bg);color:var(--fg);min-height:100dvh;overflow-x:hidden}
+.mono{font-family:'JetBrains Mono',monospace}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);
+  background-size:40px 40px;
+}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:all .3s;position:relative}
+.dot.ok{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.dot.ok::after{content:'';position:absolute;inset:-3px;border-radius:50%;border:1.5px solid var(--accent);animation:pr 2s ease-out infinite}
+.dot.warn{background:var(--warn);box-shadow:0 0 6px var(--warn)}
+.dot.bad{background:var(--danger);box-shadow:0 0 6px var(--danger);animation:bl .8s ease-in-out infinite}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes pr{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.2);opacity:0}}
+.btn{
+  padding:8px 16px;border:none;border-radius:7px;cursor:pointer;
+  font-family:'Space Grotesk',sans-serif;font-size:.82rem;font-weight:600;
+  display:inline-flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap;
+}
+.btn:active{transform:scale(.96)}
+.btn:disabled{opacity:.35;cursor:not-allowed;transform:none!important}
+.btn-connect{background:var(--accent);color:#0d1117}
+.btn-connect:hover:not(:disabled){box-shadow:0 2px 14px rgba(0,212,170,.3)}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--fg)}
+.btn-outline:hover:not(:disabled){border-color:var(--muted);background:rgba(255,255,255,.03)}
+.btn-rec{background:var(--danger);color:#fff}
+.btn-rec:hover:not(:disabled){box-shadow:0 2px 14px rgba(248,81,73,.35)}
+.btn-stop{background:transparent;border:1px solid var(--danger);color:var(--danger)}
+.btn-stop:hover:not(:disabled){background:rgba(248,81,73,.08)}
+.btn-dl{background:transparent;border:1px solid var(--accent);color:var(--accent)}
+.btn-dl:hover:not(:disabled){background:rgba(0,212,170,.08)}
+.warn-banner{
+  display:none;align-items:center;gap:8px;padding:8px 14px;border-radius:7px;
+  background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.25);
+  font-size:.8rem;color:var(--warn);
+}
+.warn-banner.show{display:flex}
+.plot{width:100%;display:block;border-radius:6px}
+.toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);
+  padding:10px 22px;border-radius:8px;font-size:.84rem;font-weight:600;
+  z-index:999;opacity:0;transition:all .35s cubic-bezier(.22,1,.36,1);
+  pointer-events:none;max-width:92vw;text-align:center;
+}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+.toast.err{background:#2d1215;color:#ff7b72;border:1px solid rgba(248,81,73,.25)}
+.toast.ok{background:#0d2818;color:var(--accent);border:1px solid rgba(0,212,170,.25)}
+.toast.info{background:#0d1a2d;color:var(--z);border:1px solid rgba(88,166,255,.25)}
+@media(max-width:640px){
+  .btn{padding:7px 10px;font-size:.76px}
+  .btn .lbl{display:none}
+}
+</style>
+</head>
+<body>
+<div id="toast" class="toast"></div>
+<div style="position:relative;z-index:1;max-width:860px;margin:0 auto;padding:14px 12px 40px">
+
+  <header style="display:flex;align-items:center;justify-content:space-between;padding-bottom:14px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:30px;height:30px;border-radius:6px;background:linear-gradient(135deg,var(--accent),#009e7e);display:flex;align-items:center;justify-content:center">
+        <i class="fa-solid fa-wave-square" style="font-size:13px;color:#0d1117"></i>
+      </div>
+      <div>
+        <h1 style="font-size:1.05rem;font-weight:700;letter-spacing:-.01em">Tremor Recorder</h1>
+        <p class="mono" style="font-size:.62rem;color:var(--muted);margin-top:1px">MPU6050 &middot; 200 Hz &middot; DLPF 21 Hz</p>
+      </div>
+    </div>
+    <div class="mono" style="font-size:.78rem;color:var(--muted)" id="clock">--:--:--</div>
+  </header>
+
+  <div class="card" style="padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:.78rem">
+    <div style="display:flex;align-items:center;gap:7px">
+      <div id="connDot" class="dot"></div>
+      <span id="connText" class="mono" style="color:var(--muted)">Disconnected</span>
+    </div>
+    <div style="width:1px;height:16px;background:var(--border)"></div>
+    <div class="mono">Rate <span id="hzVal" style="color:var(--fg);font-weight:600">--</span> Hz</div>
+    <div style="width:1px;height:16px;background:var(--border)"></div>
+    <div class="mono">Lost <span id="lostVal" style="font-weight:600">0</span></div>
+    <div style="width:1px;height:16px;background:var(--border)"></div>
+    <div class="mono">Session <span id="sessVal" style="color:var(--fg);font-weight:600">00:00.0</span></div>
+  </div>
+
+  <div id="warnBanner" class="warn-banner" style="margin-bottom:12px">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    <span class="mono">Packet loss detected — data may be incomplete</span>
+  </div>
+
+  <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+    <button id="btnConn" class="btn btn-connect"><i class="fa-brands fa-bluetooth-b"></i> <span class="lbl">Connect</span></button>
+    <div style="width:1px;height:24px;background:var(--border);margin:0 2px"></div>
+    <button id="btnReset" class="btn btn-outline" disabled><i class="fa-solid fa-rotate-left"></i> <span class="lbl">Reset</span></button>
+    <button id="btnStart" class="btn btn-rec" disabled><i class="fa-solid fa-circle" style="font-size:.5rem"></i> <span class="lbl">Start Save</span></button>
+    <button id="btnStop" class="btn btn-stop" disabled><i class="fa-solid fa-stop"></i> <span class="lbl">Stop Save</span></button>
+    <button id="btnDl" class="btn btn-dl" disabled><i class="fa-solid fa-download"></i> <span class="lbl">Download CSV</span></button>
+  </div>
+
+  <div class="card" style="padding:14px;margin-bottom:12px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Gyroscope RMS <span style="opacity:.5">(1 s window)</span></div>
+      <div class="mono" style="font-size:.68rem;color:var(--muted);display:flex;gap:10px">
+        <span><span style="color:var(--x)">&#9644;</span> X</span>
+        <span><span style="color:var(--y)">&#9644;</span> Y</span>
+        <span><span style="color:var(--z)">&#9644;</span> Z</span>
+        <span style="color:var(--fg)">&#9644; |G|</span>
+      </div>
+    </div>
+    <canvas id="rmsPlot" class="plot" style="height:200px"></canvas>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;flex-wrap:wrap;gap:8px">
+      <div class="mono" style="font-size:1.5rem;font-weight:700;color:var(--fg)" id="rmsBig">0.00 <span style="font-size:.7rem;font-weight:400;color:var(--muted)">deg/s</span></div>
+      <div class="mono" style="font-size:.72rem;color:var(--muted);display:flex;gap:12px">
+        <span>X <strong id="rmsX" style="color:var(--x)">0.00</strong></span>
+        <span>Y <strong id="rmsY" style="color:var(--y)">0.00</strong></span>
+        <span>Z <strong id="rmsZ" style="color:var(--z)">0.00</strong></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:14px;margin-bottom:12px">
+    <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Raw Gyroscope <span style="opacity:.5">(last 3 s)</span></div>
+    <canvas id="rawPlot" class="plot" style="height:90px"></canvas>
+    <div class="mono" style="font-size:.7rem;color:var(--muted);margin-top:6px;display:flex;gap:12px">
+      <span>X <strong id="gxVal" style="color:var(--x)">0.0</strong></span>
+      <span>Y <strong id="gyVal" style="color:var(--y)">0.0</strong></span>
+      <span>Z <strong id="gzVal" style="color:var(--z)">0.0</strong></span>
+      <span style="color:var(--dim)">|&middot;|</span>
+      <span><strong id="gmag" style="color:var(--fg)">0.0</strong> deg/s</span>
+    </div>
+  </div>
+
+  <!-- Buffer info -->
+  <div class="card mono" style="padding:10px 14px;font-size:.74rem;color:var(--muted);display:flex;gap:20px;flex-wrap:wrap">
+    <span>Buffered: <strong id="bufSamples" style="color:var(--fg)">0</strong> samples</span>
+    <span>Size: <strong id="bufSize" style="color:var(--fg)">0 B</strong></span>
+    <span>Seq: <strong id="seqVal" style="color:var(--fg)">--</strong></span>
+  </div>
+</div>
+
+<script>
+class IMUReceiver {
+  constructor() {
+    this.device = null; this.char = null;
+    this.lastSeq = -1; this.lost = 0;
+    this.SVC = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+    this.CHR = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+    this.onData = null; this.onDisconnect = null;
+  }
+  async connect() {
+    this.device = await navigator.bluetooth.requestDevice({
+      /* ← ONLY CHANGE from XIAO_IMU version */
+      filters: [{ name: 'TREMOR_IMU' }],
+      optionalServices: [this.SVC]
+    });
+    this.device.addEventListener('gattserverdisconnected', () => this.onDisconnect?.());
+    const srv = await (await this.device.gatt.connect()).getPrimaryService(this.SVC);
+    this.char = await srv.getCharacteristic(this.CHR);
+    await this.char.startNotifications();
+    this.char.addEventListener('characteristicvaluechanged', e => this._parse(e));
+  }
+  _parse(e) {
+    const d = e.target.value;
+    const seq = d.getUint16(0, true);
+    if (this.lastSeq >= 0) {
+      const gap = ((seq - ((this.lastSeq + 1) & 0xFFFF)) + 0x10000) & 0xFFFF;
+      if (gap) this.lost += gap;
+    }
+    this.lastSeq = seq;
+    this.onData?.({
+      seq,
+      ax: d.getInt16(2, true) / 16384,
+      ay: d.getInt16(4, true) / 16384,
+      az: d.getInt16(6, true) / 16384,
+      gx: d.getInt16(8, true) / 131,
+      gy: d.getInt16(10, true) / 131,
+      gz: d.getInt16(12, true) / 131,
+      ts: performance.now()
+    });
+  }
+  disconnect() { if (this.device?.gatt.connected) this.device.gatt.disconnect(); }
+}
+const RN = 200;
+const rb = { x: new Float64Array(RN), y: new Float64Array(RN), z: new Float64Array(RN) };
+let ri = 0, rf = false, sqX = 0, sqY = 0, sqZ = 0;
+
+function pushRMS(gx, gy, gz) {
+  const i = ri;
+  sqX -= rb.x[i] * rb.x[i]; sqY -= rb.y[i] * rb.y[i]; sqZ -= rb.z[i] * rb.z[i];
+  rb.x[i] = gx; rb.y[i] = gy; rb.z[i] = gz;
+  sqX += gx * gx; sqY += gy * gy; sqZ += gz * gz;
+  ri = (i + 1) % RN;
+  if (!rf && ri === 0) rf = true;
+  const n = rf ? RN : ri;
+  if (n === 0) return { t: 0, x: 0, y: 0, z: 0 };
+  return {
+    t: Math.sqrt((sqX + sqY + sqZ) / n),
+    x: Math.sqrt(sqX / n), y: Math.sqrt(sqY / n), z: Math.sqrt(sqZ / n)
+  };
+}
+const RHM = 1500;
+const rh = { t: [], x: [], y: [], z: [] };
+let rTick = 0;
+
+const WN = 600;
+const wb = { x: new Float64Array(WN), y: new Float64Array(WN), z: new Float64Array(WN) };
+let wi = 0, wf = false;
+function pushRaw(gx, gy, gz) {
+  wb.x[wi] = gx; wb.y[wi] = gy; wb.z[wi] = gz;
+  wi = (wi + 1) % WN; if (!wf && wi === 0) wf = true;
+}
+function sc(canvas) {
+  const r = canvas.getBoundingClientRect(), d = devicePixelRatio || 1;
+  canvas.width = r.width * d; canvas.height = r.height * d;
+  const ctx = canvas.getContext('2d'); ctx.setTransform(d, 0, 0, d, 0, 0);
+  return { ctx, w: r.width, h: r.height };
+}
+function nm(v) {
+  if (v <= 0) return 5;
+  const m = Math.pow(10, Math.floor(Math.log10(v))), n = v / m;
+  return n <= 1 ? m : n <= 2 ? 2 * m : n <= 5 ? 5 * m : 10 * m;
+}
+function drawRMS() {
+  const { ctx, w, h } = sc($('rmsPlot'));
+  const p = { t: 8, b: 22, l: 42, r: 12 };
+  const pw = w - p.l - p.r, ph = h - p.t - p.b;
+  let yM = 1;
+  for (const k of ['t','x','y','z']) for (const v of rh[k]) if (v > yM) yM = v;
+  yM = nm(yM * 1.2);
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = p.t + (i / 4) * ph;
+    ctx.beginPath(); ctx.moveTo(p.l, y); ctx.lineTo(p.l + pw, y); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.font = '9px JetBrains Mono,monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText((yM * (1 - i / 4)).toFixed(yM < 10 ? 1 : 0), p.l - 5, y + 3);
+  }
+  const ts = RHM * 0.2;
+  ctx.textAlign = 'center';
+  for (let s = 0; s <= ts; s += 60) {
+    const x = p.l + (s / ts) * pw;
+    ctx.strokeStyle = 'rgba(255,255,255,.04)';
+    ctx.beginPath(); ctx.moveTo(x, p.t); ctx.lineTo(x, p.t + ph); ctx.stroke();
+    if (s > 0 && s < ts) { ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillText(`-${ts - s}s`, x, h - 4); }
+  }
+  ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillText('now', p.l + pw, h - 4);
+  ctx.fillText(`-${ts}s`, p.l, h - 4);
+  const n = rh.t.length; if (n < 2) return;
+  const xs = p.l + ((RHM - n) / RHM) * pw;
+  const lines = [
+    { d: rh.x, c: 'rgba(240,136,62,.5)', w: 1 },
+    { d: rh.y, c: 'rgba(0,212,170,.5)', w: 1 },
+    { d: rh.z, c: 'rgba(88,166,255,.5)', w: 1 },
+    { d: rh.t, c: '#c9d1d9', w: 1.8 },
+  ];
+  for (const l of lines) {
+    ctx.beginPath(); ctx.strokeStyle = l.c; ctx.lineWidth = l.w; ctx.lineJoin = 'round';
+    for (let i = 0; i < n; i++) {
+      const px = xs + (i / (RHM - 1)) * pw, py = p.t + ph - (l.d[i] / yM) * ph;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+}
+function drawRaw() {
+  const { ctx, w, h } = sc($('rawPlot'));
+  const p = { t: 4, b: 2, l: 2, r: 2 };
+  const pw = w - p.l - p.r, ph = h - p.t - p.b;
+  const n = wf ? WN : wi;
+  if (n < 2) { ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, w, h); return; }
+  let yM = 10;
+  for (let k = 0; k < n; k++) {
+    const idx = wf ? (wi + k) % WN : k;
+    for (const a of ['x','y','z']) { const v = Math.abs(wb[a][idx]); if (v > yM) yM = v; }
+  }
+  yM = nm(yM * 1.15);
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, w, h);
+  const mid = p.t + ph / 2;
+  ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(p.l, mid); ctx.lineTo(p.l + pw, mid); ctx.stroke();
+  const axes = [
+    { k: 'x', c: 'rgba(240,136,62,.6)' }, { k: 'y', c: 'rgba(0,212,170,.6)' }, { k: 'z', c: 'rgba(88,166,255,.6)' },
+  ];
+  for (const a of axes) {
+    ctx.beginPath(); ctx.strokeStyle = a.c; ctx.lineWidth = 1; ctx.lineJoin = 'round';
+    for (let k = 0; k < n; k++) {
+      const idx = wf ? (wi + k) % WN : k;
+      const px = p.l + (k / (WN - 1)) * pw, py = mid - (wb[a.k][idx] / yM) * (ph / 2);
+      k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+}
+
+const HDR = 'seq,rel_ms,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps\n';
+let rows = [], bLen = 0, bTs = 0;
+function csvReset() { rows = []; bLen = HDR.length; bTs = 0; }
+function csvPush(d) {
+  if (!bTs) bTs = d.ts;
+  const r = `${d.seq},${(d.ts - bTs).toFixed(1)},${d.ax.toFixed(6)},${d.ay.toFixed(6)},${d.az.toFixed(6)},${d.gx.toFixed(4)},${d.gy.toFixed(4)},${d.gz.toFixed(4)}\n`;
+  rows.push(r); bLen += r.length;
+}
+function csvDl() {
+  const blob = new Blob([HDR, ...rows], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url;
+  const d = new Date(), p = (n, l = 2) => String(n).padStart(l, '0');
+  a.download = `tremor_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+function fs(b) { return b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(1) + ' KB' : (b / 1048576).toFixed(1) + ' MB'; }
+
+const $ = id => document.getElementById(id);
+const imu = new IMUReceiver();
+let conn = false, rec = false, hasD = false;
+let sStart = 0, sInt = null, lastT = 0, hzB = [], pLost = 0;
+
+function upBtn() {
+  $('btnConn').disabled = conn;
+  $('btnConn').style.display = conn ? 'none' : '';
+  $('btnReset').disabled = !conn || rec;
+  $('btnStart').disabled = !conn || rec;
+  $('btnStop').disabled = !rec;
+  $('btnDl').disabled = !hasD || rec;
+}
+let tT;
+function toast(m, t = 'info') {
+  const e = $('toast'); e.textContent = m; e.className = `toast ${t} show`;
+  clearTimeout(tT); tT = setTimeout(() => e.classList.remove('show'), 3200);
+}
+
+ $('btnConn').addEventListener('click', async () => {
+  $('btnConn').disabled = true;
+  $('btnConn').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning';
+  try {
+    await imu.connect(); conn = true;
+    $('connDot').className = 'dot ok';
+    $('connText').textContent = 'Connected';
+    $('connText').style.color = 'var(--accent)';
+    upBtn(); toast('Connected to TREMOR_IMU', 'ok');
+  } catch (e) {
+    toast('Failed: ' + e.message, 'err');
+    $('btnConn').disabled = false;
+    $('btnConn').innerHTML = '<i class="fa-brands fa-bluetooth-b"></i> <span class="lbl">Connect</span>';
+  }
+});
+
+function onDisc() {
+  conn = false; if (rec) { rec = false; clearInterval(sInt); }
+  $('connDot').className = 'dot bad';
+  $('connText').textContent = 'Disconnected';
+  $('connText').style.color = 'var(--danger)';
+  $('hzVal').textContent = '--'; $('hzVal').style.color = 'var(--muted)';
+  lastT = 0; hzB = []; upBtn(); toast('Disconnected', 'err');
+}
+imu.onDisconnect = onDisc;
+
+ $('btnReset').addEventListener('click', () => {
+  csvReset(); hasD = false;
+  rh.t.length = rh.x.length = rh.y.length = rh.z.length = 0; rTick = 0;
+  wi = 0; wf = false; ri = 0; rf = false; sqX = sqY = sqZ = 0;
+  $('bufSamples').textContent = '0'; $('bufSize').textContent = '0 B';
+  upBtn(); toast('Buffer cleared', 'info');
+});
+
+ $('btnStart').addEventListener('click', () => {
+  csvReset(); rec = true; sStart = performance.now();
+  sInt = setInterval(() => {
+    if (!rec) return;
+    const s = (performance.now() - sStart) / 1000, m = Math.floor(s / 60);
+    $('sessVal').textContent = `${String(m).padStart(2,'0')}:${(s % 60).toFixed(1).padStart(4,'0')}`;
+  }, 100);
+  upBtn(); toast('Recording started', 'info');
+});
+
+ $('btnStop').addEventListener('click', () => {
+  rec = false; clearInterval(sInt); hasD = rows.length > 0; upBtn();
+  toast(`Stopped — ${rows.length.toLocaleString()} samples buffered`, 'ok');
+});
+
+ $('btnDl').addEventListener('click', () => {
+  if (!hasD) return; csvDl();
+  toast(`Saved ${rows.length.toLocaleString()} samples (${fs(bLen)})`, 'ok');
+});
+
+setInterval(() => {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  $('clock').textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}, 1000);
+
+imu.onData = d => {
+  const now = performance.now();
+  hzB.push(now); while (hzB.length && hzB[0] < now - 1000) hzB.shift();
+  const hz = hzB.length, he = $('hzVal');
+  he.textContent = hz;
+  if (hz >= 180 && hz <= 220) { he.style.color = 'var(--accent)'; $('connDot').className = 'dot ok'; }
+  else if (hz > 0) { he.style.color = 'var(--warn)'; $('connDot').className = 'dot warn'; }
+  if (imu.lost > pLost) { $('warnBanner').classList.add('show'); $('lostVal').style.color = 'var(--danger)'; pLost = imu.lost; }
+  $('lostVal').textContent = imu.lost; $('seqVal').textContent = d.seq;
+  if (rec) csvPush(d);
+  pushRaw(d.gx, d.gy, d.gz);
+  const rms = pushRMS(d.gx, d.gy, d.gz);
+  rTick++;
+  if (rTick >= 40) {
+    rTick = 0;
+    rh.t.push(rms.t); rh.x.push(rms.x); rh.y.push(rms.y); rh.z.push(rms.z);
+    if (rh.t.length > RHM) { rh.t.shift(); rh.x.shift(); rh.y.shift(); rh.z.shift(); }
+  }
+  $('rmsBig').innerHTML = `${rms.t.toFixed(2)} <span style="font-size:.7rem;font-weight:400;color:var(--muted)">deg/s</span>`;
+  $('rmsX').textContent = rms.x.toFixed(2);
+  $('rmsY').textContent = rms.y.toFixed(2);
+  $('rmsZ').textContent = rms.z.toFixed(2);
+  $('gxVal').textContent = d.gx.toFixed(1);
+  $('gyVal').textContent = d.gy.toFixed(1);
+  $('gzVal').textContent = d.gz.toFixed(1);
+  $('gmag').textContent = Math.sqrt(d.gx ** 2 + d.gy ** 2 + d.gz ** 2).toFixed(1);
+  $('bufSamples').textContent = rows.length.toLocaleString();
+  $('bufSize').textContent = fs(bLen);
+  lastT = now;
+};
+
+let pf = 0;
+(function loop() {
+  requestAnimationFrame(loop);
+  if (++pf % 2) return;
+  drawRMS(); drawRaw();
+})();
+window.addEventListener('resize', () => { drawRMS(); drawRaw(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) lastT = 0; });
+if (!navigator.bluetooth) { toast('Web Bluetooth not supported — use Chrome or Edge', 'err'); $('btnConn').disabled = true; }
+</script>
+</body>
+</html>
