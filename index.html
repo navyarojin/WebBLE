@@ -2,453 +2,523 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Tremor Recorder</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+<title>TREMOR_IMU — Web Receiver</title>
 <style>
-:root{
-  --bg:#0d1117;--card:#161b22;--border:#21262d;
-  --fg:#c9d1d9;--muted:#6e7681;--dim:#30363d;
-  --accent:#00d4aa;--warn:#d29922;--danger:#f85149;
-  --x:#f0883e;--y:#00d4aa;--z:#58a6ff;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Space Grotesk',sans-serif;background:var(--bg);color:var(--fg);min-height:100dvh;overflow-x:hidden}
-.mono{font-family:'JetBrains Mono',monospace}
-body::before{
-  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
-  background-image:
-    linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);
-  background-size:40px 40px;
-}
-.card{background:var(--card);border:1px solid var(--border);border-radius:10px}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:all .3s;position:relative}
-.dot.ok{background:var(--accent);box-shadow:0 0 6px var(--accent)}
-.dot.ok::after{content:'';position:absolute;inset:-3px;border-radius:50%;border:1.5px solid var(--accent);animation:pr 2s ease-out infinite}
-.dot.warn{background:var(--warn);box-shadow:0 0 6px var(--warn)}
-.dot.bad{background:var(--danger);box-shadow:0 0 6px var(--danger);animation:bl .8s ease-in-out infinite}
-@keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}
-@keyframes pr{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.2);opacity:0}}
-.btn{
-  padding:8px 16px;border:none;border-radius:7px;cursor:pointer;
-  font-family:'Space Grotesk',sans-serif;font-size:.82rem;font-weight:600;
-  display:inline-flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap;
-}
-.btn:active{transform:scale(.96)}
-.btn:disabled{opacity:.35;cursor:not-allowed;transform:none!important}
-.btn-connect{background:var(--accent);color:#0d1117}
-.btn-connect:hover:not(:disabled){box-shadow:0 2px 14px rgba(0,212,170,.3)}
-.btn-outline{background:transparent;border:1px solid var(--border);color:var(--fg)}
-.btn-outline:hover:not(:disabled){border-color:var(--muted);background:rgba(255,255,255,.03)}
-.btn-rec{background:var(--danger);color:#fff}
-.btn-rec:hover:not(:disabled){box-shadow:0 2px 14px rgba(248,81,73,.35)}
-.btn-stop{background:transparent;border:1px solid var(--danger);color:var(--danger)}
-.btn-stop:hover:not(:disabled){background:rgba(248,81,73,.08)}
-.btn-dl{background:transparent;border:1px solid var(--accent);color:var(--accent)}
-.btn-dl:hover:not(:disabled){background:rgba(0,212,170,.08)}
-.warn-banner{
-  display:none;align-items:center;gap:8px;padding:8px 14px;border-radius:7px;
-  background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.25);
-  font-size:.8rem;color:var(--warn);
-}
-.warn-banner.show{display:flex}
-.plot{width:100%;display:block;border-radius:6px}
-.toast{
-  position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);
-  padding:10px 22px;border-radius:8px;font-size:.84rem;font-weight:600;
-  z-index:999;opacity:0;transition:all .35s cubic-bezier(.22,1,.36,1);
-  pointer-events:none;max-width:92vw;text-align:center;
-}
-.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
-.toast.err{background:#2d1215;color:#ff7b72;border:1px solid rgba(248,81,73,.25)}
-.toast.ok{background:#0d2818;color:var(--accent);border:1px solid rgba(0,212,170,.25)}
-.toast.info{background:#0d1a2d;color:var(--z);border:1px solid rgba(88,166,255,.25)}
-@media(max-width:640px){
-  .btn{padding:7px 10px;font-size:.76px}
-  .btn .lbl{display:none}
-}
+  :root {
+    --bg: #0f1419;
+    --panel: #1a2029;
+    --border: #2a3441;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --good: #3fb950;
+    --bad: #f85149;
+    --warn: #d29922;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px;
+    min-height: 100vh;
+  }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; color: var(--accent); }
+  .subtitle { color: var(--muted); font-size: 0.85rem; margin-bottom: 20px; }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .panel h2 {
+    font-size: 0.9rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 12px;
+  }
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-right: 8px;
+    transition: opacity 0.15s;
+  }
+  button:hover:not(:disabled) { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.danger { background: var(--bad); }
+  button.secondary { background: var(--border); }
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+  }
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+  .dot.connected { background: var(--good); box-shadow: 0 0 8px var(--good); }
+  .dot.error { background: var(--bad); }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .stat {
+    background: var(--bg);
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+  .stat-label {
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .stat-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    font-family: "SF Mono", Consolas, monospace;
+  }
+  .stat-value.good { color: var(--good); }
+  .stat-value.warn { color: var(--warn); }
+  .stat-value.bad { color: var(--bad); }
+  canvas {
+    width: 100%;
+    height: 280px;
+    background: var(--bg);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    display: block;
+  }
+  .chart-legend {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch {
+    width: 12px;
+    height: 3px;
+    border-radius: 2px;
+  }
+  select, input {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    margin-right: 8px;
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .log {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    height: 150px;
+    overflow-y: auto;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .log-entry { margin-bottom: 2px; }
+  .log-entry.err { color: var(--bad); }
+  .log-entry.ok { color: var(--good); }
+  @media (max-width: 800px) {
+    .grid { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
 </style>
 </head>
 <body>
-<div id="toast" class="toast"></div>
-<div style="position:relative;z-index:1;max-width:860px;margin:0 auto;padding:14px 12px 40px">
 
-  <header style="display:flex;align-items:center;justify-content:space-between;padding-bottom:14px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap;gap:8px">
-    <div style="display:flex;align-items:center;gap:10px">
-      <div style="width:30px;height:30px;border-radius:6px;background:linear-gradient(135deg,var(--accent),#009e7e);display:flex;align-items:center;justify-content:center">
-        <i class="fa-solid fa-wave-square" style="font-size:13px;color:#0d1117"></i>
-      </div>
-      <div>
-        <h1 style="font-size:1.05rem;font-weight:700;letter-spacing:-.01em">Tremor Recorder</h1>
-        <p class="mono" style="font-size:.62rem;color:var(--muted);margin-top:1px">MPU6050 &middot; 200 Hz &middot; DLPF 21 Hz</p>
-      </div>
-    </div>
-    <div class="mono" style="font-size:.78rem;color:var(--muted)" id="clock">--:--:--</div>
-  </header>
+<h1>⚡ TREMOR_IMU Web Receiver</h1>
+<div class="subtitle">ESP32-C3 + MPU6050 · 200 Hz · Batched BLE (5 samples / notification)</div>
 
-  <div class="card" style="padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:.78rem">
-    <div style="display:flex;align-items:center;gap:7px">
-      <div id="connDot" class="dot"></div>
-      <span id="connText" class="mono" style="color:var(--muted)">Disconnected</span>
-    </div>
-    <div style="width:1px;height:16px;background:var(--border)"></div>
-    <div class="mono">Rate <span id="hzVal" style="color:var(--fg);font-weight:600">--</span> Hz</div>
-    <div style="width:1px;height:16px;background:var(--border)"></div>
-    <div class="mono">Lost <span id="lostVal" style="font-weight:600">0</span></div>
-    <div style="width:1px;height:16px;background:var(--border)"></div>
-    <div class="mono">Session <span id="sessVal" style="color:var(--fg);font-weight:600">00:00.0</span></div>
-  </div>
-
-  <div id="warnBanner" class="warn-banner" style="margin-bottom:12px">
-    <i class="fa-solid fa-triangle-exclamation"></i>
-    <span class="mono">Packet loss detected — data may be incomplete</span>
-  </div>
-
-  <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
-    <button id="btnConn" class="btn btn-connect"><i class="fa-brands fa-bluetooth-b"></i> <span class="lbl">Connect</span></button>
-    <div style="width:1px;height:24px;background:var(--border);margin:0 2px"></div>
-    <button id="btnReset" class="btn btn-outline" disabled><i class="fa-solid fa-rotate-left"></i> <span class="lbl">Reset</span></button>
-    <button id="btnStart" class="btn btn-rec" disabled><i class="fa-solid fa-circle" style="font-size:.5rem"></i> <span class="lbl">Start Save</span></button>
-    <button id="btnStop" class="btn btn-stop" disabled><i class="fa-solid fa-stop"></i> <span class="lbl">Stop Save</span></button>
-    <button id="btnDl" class="btn btn-dl" disabled><i class="fa-solid fa-download"></i> <span class="lbl">Download CSV</span></button>
-  </div>
-
-  <div class="card" style="padding:14px;margin-bottom:12px">
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px">
-      <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Gyroscope RMS <span style="opacity:.5">(1 s window)</span></div>
-      <div class="mono" style="font-size:.68rem;color:var(--muted);display:flex;gap:10px">
-        <span><span style="color:var(--x)">&#9644;</span> X</span>
-        <span><span style="color:var(--y)">&#9644;</span> Y</span>
-        <span><span style="color:var(--z)">&#9644;</span> Z</span>
-        <span style="color:var(--fg)">&#9644; |G|</span>
-      </div>
-    </div>
-    <canvas id="rmsPlot" class="plot" style="height:200px"></canvas>
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;flex-wrap:wrap;gap:8px">
-      <div class="mono" style="font-size:1.5rem;font-weight:700;color:var(--fg)" id="rmsBig">0.00 <span style="font-size:.7rem;font-weight:400;color:var(--muted)">deg/s</span></div>
-      <div class="mono" style="font-size:.72rem;color:var(--muted);display:flex;gap:12px">
-        <span>X <strong id="rmsX" style="color:var(--x)">0.00</strong></span>
-        <span>Y <strong id="rmsY" style="color:var(--y)">0.00</strong></span>
-        <span>Z <strong id="rmsZ" style="color:var(--z)">0.00</strong></span>
-      </div>
+<div class="panel" style="margin-bottom: 16px;">
+  <div class="controls">
+    <button id="btnConnect">🔗 Connect</button>
+    <button id="btnDisconnect" class="danger" disabled>Disconnect</button>
+    <button id="btnRecord" class="secondary" disabled>⏺ Record</button>
+    <button id="btnDownload" class="secondary" disabled>⬇ Download CSV</button>
+    <div class="status-row" style="margin: 0; margin-left: auto;">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">Disconnected</span>
     </div>
   </div>
 
-  <div class="card" style="padding:14px;margin-bottom:12px">
-    <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Raw Gyroscope <span style="opacity:.5">(last 3 s)</span></div>
-    <canvas id="rawPlot" class="plot" style="height:90px"></canvas>
-    <div class="mono" style="font-size:.7rem;color:var(--muted);margin-top:6px;display:flex;gap:12px">
-      <span>X <strong id="gxVal" style="color:var(--x)">0.0</strong></span>
-      <span>Y <strong id="gyVal" style="color:var(--y)">0.0</strong></span>
-      <span>Z <strong id="gzVal" style="color:var(--z)">0.0</strong></span>
-      <span style="color:var(--dim)">|&middot;|</span>
-      <span><strong id="gmag" style="color:var(--fg)">0.0</strong> deg/s</span>
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Sample Rate</div>
+      <div class="stat-value" id="statRate">— Hz</div>
     </div>
-  </div>
-
-  <!-- Buffer info -->
-  <div class="card mono" style="padding:10px 14px;font-size:.74rem;color:var(--muted);display:flex;gap:20px;flex-wrap:wrap">
-    <span>Buffered: <strong id="bufSamples" style="color:var(--fg)">0</strong> samples</span>
-    <span>Size: <strong id="bufSize" style="color:var(--fg)">0 B</strong></span>
-    <span>Seq: <strong id="seqVal" style="color:var(--fg)">--</strong></span>
+    <div class="stat">
+      <div class="stat-label">Samples</div>
+      <div class="stat-value" id="statSamples">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Packets Lost</div>
+      <div class="stat-value good" id="statLost">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Loss %</div>
+      <div class="stat-value good" id="statLossPct">0.00%</div>
+    </div>
   </div>
 </div>
 
+<div class="grid">
+  <div class="panel">
+    <h2>Accelerometer (g)</h2>
+    <canvas id="chartAccel"></canvas>
+    <div class="chart-legend">
+      <div class="legend-item"><div class="legend-swatch" style="background:#ff6b6b"></div>X</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#4ecdc4"></div>Y</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#ffe66d"></div>Z</div>
+    </div>
+  </div>
+  <div class="panel">
+    <h2>Gyroscope (°/s)</h2>
+    <canvas id="chartGyro"></canvas>
+    <div class="chart-legend">
+      <div class="legend-item"><div class="legend-swatch" style="background:#ff6b6b"></div>X</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#4ecdc4"></div>Y</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#ffe66d"></div>Z</div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Event Log</h2>
+  <div class="log" id="log"></div>
+</div>
+
 <script>
-class IMUReceiver {
-  constructor() {
-    this.device = null; this.char = null;
-    this.lastSeq = -1; this.lost = 0;
-    this.SVC = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-    this.CHR = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
-    this.onData = null; this.onDisconnect = null;
-  }
-  async connect() {
-    this.device = await navigator.bluetooth.requestDevice({
-      /* ← ONLY CHANGE from XIAO_IMU version */
-      filters: [{ name: 'TREMOR_IMU' }],
-      optionalServices: [this.SVC]
-    });
-    this.device.addEventListener('gattserverdisconnected', () => this.onDisconnect?.());
-    const srv = await (await this.device.gatt.connect()).getPrimaryService(this.SVC);
-    this.char = await srv.getCharacteristic(this.CHR);
-    await this.char.startNotifications();
-    this.char.addEventListener('characteristicvaluechanged', e => this._parse(e));
-  }
-  _parse(e) {
-    const d = e.target.value;
-    const seq = d.getUint16(0, true);
-    if (this.lastSeq >= 0) {
-      const gap = ((seq - ((this.lastSeq + 1) & 0xFFFF)) + 0x10000) & 0xFFFF;
-      if (gap) this.lost += gap;
-    }
-    this.lastSeq = seq;
-    this.onData?.({
-      seq,
-      ax: d.getInt16(2, true) / 16384,
-      ay: d.getInt16(4, true) / 16384,
-      az: d.getInt16(6, true) / 16384,
-      gx: d.getInt16(8, true) / 131,
-      gy: d.getInt16(10, true) / 131,
-      gz: d.getInt16(12, true) / 131,
-      ts: performance.now()
-    });
-  }
-  disconnect() { if (this.device?.gatt.connected) this.device.gatt.disconnect(); }
-}
-const RN = 200;
-const rb = { x: new Float64Array(RN), y: new Float64Array(RN), z: new Float64Array(RN) };
-let ri = 0, rf = false, sqX = 0, sqY = 0, sqZ = 0;
 
-function pushRMS(gx, gy, gz) {
-  const i = ri;
-  sqX -= rb.x[i] * rb.x[i]; sqY -= rb.y[i] * rb.y[i]; sqZ -= rb.z[i] * rb.z[i];
-  rb.x[i] = gx; rb.y[i] = gy; rb.z[i] = gz;
-  sqX += gx * gx; sqY += gy * gy; sqZ += gz * gz;
-  ri = (i + 1) % RN;
-  if (!rf && ri === 0) rf = true;
-  const n = rf ? RN : ri;
-  if (n === 0) return { t: 0, x: 0, y: 0, z: 0 };
-  return {
-    t: Math.sqrt((sqX + sqY + sqZ) / n),
-    x: Math.sqrt(sqX / n), y: Math.sqrt(sqY / n), z: Math.sqrt(sqZ / n)
-  };
-}
-const RHM = 1500;
-const rh = { t: [], x: [], y: [], z: [] };
-let rTick = 0;
+const SVC_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+const CHR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+const ACCEL_SENSITIVITY = 16384;  // LSB/g  (±2 g range)
+const GYRO_SENSITIVITY  = 131;    // LSB/(°/s) (±250 °/s range)
+const SAMPLES_PER_PACKET = 5;
+const CHART_WINDOW_SEC = 5;       // rolling window
+const TARGET_RATE = 200;          // Hz
 
-const WN = 600;
-const wb = { x: new Float64Array(WN), y: new Float64Array(WN), z: new Float64Array(WN) };
-let wi = 0, wf = false;
-function pushRaw(gx, gy, gz) {
-  wb.x[wi] = gx; wb.y[wi] = gy; wb.z[wi] = gz;
-  wi = (wi + 1) % WN; if (!wf && wi === 0) wf = true;
-}
-function sc(canvas) {
-  const r = canvas.getBoundingClientRect(), d = devicePixelRatio || 1;
-  canvas.width = r.width * d; canvas.height = r.height * d;
-  const ctx = canvas.getContext('2d'); ctx.setTransform(d, 0, 0, d, 0, 0);
-  return { ctx, w: r.width, h: r.height };
-}
-function nm(v) {
-  if (v <= 0) return 5;
-  const m = Math.pow(10, Math.floor(Math.log10(v))), n = v / m;
-  return n <= 1 ? m : n <= 2 ? 2 * m : n <= 5 ? 5 * m : 10 * m;
-}
-function drawRMS() {
-  const { ctx, w, h } = sc($('rmsPlot'));
-  const p = { t: 8, b: 22, l: 42, r: 12 };
-  const pw = w - p.l - p.r, ph = h - p.t - p.b;
-  let yM = 1;
-  for (const k of ['t','x','y','z']) for (const v of rh[k]) if (v > yM) yM = v;
-  yM = nm(yM * 1.2);
-  ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const y = p.t + (i / 4) * ph;
-    ctx.beginPath(); ctx.moveTo(p.l, y); ctx.lineTo(p.l + pw, y); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.font = '9px JetBrains Mono,monospace';
-    ctx.textAlign = 'right';
-    ctx.fillText((yM * (1 - i / 4)).toFixed(yM < 10 ? 1 : 0), p.l - 5, y + 3);
-  }
-  const ts = RHM * 0.2;
-  ctx.textAlign = 'center';
-  for (let s = 0; s <= ts; s += 60) {
-    const x = p.l + (s / ts) * pw;
-    ctx.strokeStyle = 'rgba(255,255,255,.04)';
-    ctx.beginPath(); ctx.moveTo(x, p.t); ctx.lineTo(x, p.t + ph); ctx.stroke();
-    if (s > 0 && s < ts) { ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillText(`-${ts - s}s`, x, h - 4); }
-  }
-  ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillText('now', p.l + pw, h - 4);
-  ctx.fillText(`-${ts}s`, p.l, h - 4);
-  const n = rh.t.length; if (n < 2) return;
-  const xs = p.l + ((RHM - n) / RHM) * pw;
-  const lines = [
-    { d: rh.x, c: 'rgba(240,136,62,.5)', w: 1 },
-    { d: rh.y, c: 'rgba(0,212,170,.5)', w: 1 },
-    { d: rh.z, c: 'rgba(88,166,255,.5)', w: 1 },
-    { d: rh.t, c: '#c9d1d9', w: 1.8 },
-  ];
-  for (const l of lines) {
-    ctx.beginPath(); ctx.strokeStyle = l.c; ctx.lineWidth = l.w; ctx.lineJoin = 'round';
-    for (let i = 0; i < n; i++) {
-      const px = xs + (i / (RHM - 1)) * pw, py = p.t + ph - (l.d[i] / yM) * ph;
-      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-    }
-    ctx.stroke();
-  }
-}
-function drawRaw() {
-  const { ctx, w, h } = sc($('rawPlot'));
-  const p = { t: 4, b: 2, l: 2, r: 2 };
-  const pw = w - p.l - p.r, ph = h - p.t - p.b;
-  const n = wf ? WN : wi;
-  if (n < 2) { ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, w, h); return; }
-  let yM = 10;
-  for (let k = 0; k < n; k++) {
-    const idx = wf ? (wi + k) % WN : k;
-    for (const a of ['x','y','z']) { const v = Math.abs(wb[a][idx]); if (v > yM) yM = v; }
-  }
-  yM = nm(yM * 1.15);
-  ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, w, h);
-  const mid = p.t + ph / 2;
-  ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(p.l, mid); ctx.lineTo(p.l + pw, mid); ctx.stroke();
-  const axes = [
-    { k: 'x', c: 'rgba(240,136,62,.6)' }, { k: 'y', c: 'rgba(0,212,170,.6)' }, { k: 'z', c: 'rgba(88,166,255,.6)' },
-  ];
-  for (const a of axes) {
-    ctx.beginPath(); ctx.strokeStyle = a.c; ctx.lineWidth = 1; ctx.lineJoin = 'round';
-    for (let k = 0; k < n; k++) {
-      const idx = wf ? (wi + k) % WN : k;
-      const px = p.l + (k / (WN - 1)) * pw, py = mid - (wb[a.k][idx] / yM) * (ph / 2);
-      k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-    }
-    ctx.stroke();
-  }
-}
 
-const HDR = 'seq,rel_ms,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps\n';
-let rows = [], bLen = 0, bTs = 0;
-function csvReset() { rows = []; bLen = HDR.length; bTs = 0; }
-function csvPush(d) {
-  if (!bTs) bTs = d.ts;
-  const r = `${d.seq},${(d.ts - bTs).toFixed(1)},${d.ax.toFixed(6)},${d.ay.toFixed(6)},${d.az.toFixed(6)},${d.gx.toFixed(4)},${d.gy.toFixed(4)},${d.gz.toFixed(4)}\n`;
-  rows.push(r); bLen += r.length;
-}
-function csvDl() {
-  const blob = new Blob([HDR, ...rows], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob), a = document.createElement('a');
-  a.href = url;
-  const d = new Date(), p = (n, l = 2) => String(n).padStart(l, '0');
-  a.download = `tremor_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.csv`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-}
-function fs(b) { return b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(1) + ' KB' : (b / 1048576).toFixed(1) + ' MB'; }
+let device = null, characteristic = null;
+let recording = false;
+let recordedData = [];
+let totalSamples = 0;
+let totalPacketsLost = 0;
+let expectedSeq = null;
+let lastSampleTime = performance.now();
+let rateAccum = 0, rateCount = 0, lastRateUpdate = performance.now();
+let currentRate = 0;
+
+// Chart buffers (circular)
+const chartSize = TARGET_RATE * CHART_WINDOW_SEC;
+const accelBuf = { x: new Float32Array(chartSize), y: new Float32Array(chartSize), z: new Float32Array(chartSize) };
+const gyroBuf  = { x: new Float32Array(chartSize), y: new Float32Array(chartSize), z: new Float32Array(chartSize) };
+let chartIdx = 0;
+
 
 const $ = id => document.getElementById(id);
-const imu = new IMUReceiver();
-let conn = false, rec = false, hasD = false;
-let sStart = 0, sInt = null, lastT = 0, hzB = [], pLost = 0;
+const btnConnect = $('btnConnect'), btnDisconnect = $('btnDisconnect');
+const btnRecord = $('btnRecord'), btnDownload = $('btnDownload');
+const statusDot = $('statusDot'), statusText = $('statusText');
+const logEl = $('log');
 
-function upBtn() {
-  $('btnConn').disabled = conn;
-  $('btnConn').style.display = conn ? 'none' : '';
-  $('btnReset').disabled = !conn || rec;
-  $('btnStart').disabled = !conn || rec;
-  $('btnStop').disabled = !rec;
-  $('btnDl').disabled = !hasD || rec;
-}
-let tT;
-function toast(m, t = 'info') {
-  const e = $('toast'); e.textContent = m; e.className = `toast ${t} show`;
-  clearTimeout(tT); tT = setTimeout(() => e.classList.remove('show'), 3200);
+function log(msg, type = '') {
+  const entry = document.createElement('div');
+  entry.className = 'log-entry ' + type;
+  const ts = new Date().toLocaleTimeString();
+  entry.textContent = `[${ts}] ${msg}`;
+  logEl.appendChild(entry);
+  logEl.scrollTop = logEl.scrollHeight;
 }
 
- $('btnConn').addEventListener('click', async () => {
-  $('btnConn').disabled = true;
-  $('btnConn').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning';
+function setStatus(state, text) {
+  statusDot.className = 'dot ' + state;
+  statusText.textContent = text;
+}
+
+
+async function connect() {
   try {
-    await imu.connect(); conn = true;
-    $('connDot').className = 'dot ok';
-    $('connText').textContent = 'Connected';
-    $('connText').style.color = 'var(--accent)';
-    upBtn(); toast('Connected to TREMOR_IMU', 'ok');
-  } catch (e) {
-    toast('Failed: ' + e.message, 'err');
-    $('btnConn').disabled = false;
-    $('btnConn').innerHTML = '<i class="fa-brands fa-bluetooth-b"></i> <span class="lbl">Connect</span>';
-  }
-});
+    log('Requesting BLE device…');
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'TREMOR_IMU' }],
+      optionalServices: [SVC_UUID]
+    });
 
-function onDisc() {
-  conn = false; if (rec) { rec = false; clearInterval(sInt); }
-  $('connDot').className = 'dot bad';
-  $('connText').textContent = 'Disconnected';
-  $('connText').style.color = 'var(--danger)';
-  $('hzVal').textContent = '--'; $('hzVal').style.color = 'var(--muted)';
-  lastT = 0; hzB = []; upBtn(); toast('Disconnected', 'err');
+    device.addEventListener('gattserverdisconnected', onDisconnect);
+
+    log('Connecting to GATT…');
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SVC_UUID);
+    characteristic = await service.getCharacteristic(CHR_UUID);
+
+    await characteristic.startNotifications();
+    characteristic.addEventListener('characteristicvaluechanged', onData);
+
+    btnConnect.disabled = true;
+    btnDisconnect.disabled = false;
+    btnRecord.disabled = false;
+    setStatus('connected', `Connected to ${device.name}`);
+    log('✓ Notifications started', 'ok');
+
+    // Reset counters
+    totalSamples = 0;
+    totalPacketsLost = 0;
+    expectedSeq = null;
+    lastSampleTime = performance.now();
+    lastRateUpdate = performance.now();
+    rateAccum = 0; rateCount = 0;
+    currentRate = 0;
+
+  } catch (err) {
+    log('✗ Connection failed: ' + err.message, 'err');
+    setStatus('error', 'Connection failed');
+  }
 }
-imu.onDisconnect = onDisc;
 
- $('btnReset').addEventListener('click', () => {
-  csvReset(); hasD = false;
-  rh.t.length = rh.x.length = rh.y.length = rh.z.length = 0; rTick = 0;
-  wi = 0; wf = false; ri = 0; rf = false; sqX = sqY = sqZ = 0;
-  $('bufSamples').textContent = '0'; $('bufSize').textContent = '0 B';
-  upBtn(); toast('Buffer cleared', 'info');
-});
-
- $('btnStart').addEventListener('click', () => {
-  csvReset(); rec = true; sStart = performance.now();
-  sInt = setInterval(() => {
-    if (!rec) return;
-    const s = (performance.now() - sStart) / 1000, m = Math.floor(s / 60);
-    $('sessVal').textContent = `${String(m).padStart(2,'0')}:${(s % 60).toFixed(1).padStart(4,'0')}`;
-  }, 100);
-  upBtn(); toast('Recording started', 'info');
-});
-
- $('btnStop').addEventListener('click', () => {
-  rec = false; clearInterval(sInt); hasD = rows.length > 0; upBtn();
-  toast(`Stopped — ${rows.length.toLocaleString()} samples buffered`, 'ok');
-});
-
- $('btnDl').addEventListener('click', () => {
-  if (!hasD) return; csvDl();
-  toast(`Saved ${rows.length.toLocaleString()} samples (${fs(bLen)})`, 'ok');
-});
-
-setInterval(() => {
-  const d = new Date(), p = n => String(n).padStart(2, '0');
-  $('clock').textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}, 1000);
-
-imu.onData = d => {
-  const now = performance.now();
-  hzB.push(now); while (hzB.length && hzB[0] < now - 1000) hzB.shift();
-  const hz = hzB.length, he = $('hzVal');
-  he.textContent = hz;
-  if (hz >= 180 && hz <= 220) { he.style.color = 'var(--accent)'; $('connDot').className = 'dot ok'; }
-  else if (hz > 0) { he.style.color = 'var(--warn)'; $('connDot').className = 'dot warn'; }
-  if (imu.lost > pLost) { $('warnBanner').classList.add('show'); $('lostVal').style.color = 'var(--danger)'; pLost = imu.lost; }
-  $('lostVal').textContent = imu.lost; $('seqVal').textContent = d.seq;
-  if (rec) csvPush(d);
-  pushRaw(d.gx, d.gy, d.gz);
-  const rms = pushRMS(d.gx, d.gy, d.gz);
-  rTick++;
-  if (rTick >= 40) {
-    rTick = 0;
-    rh.t.push(rms.t); rh.x.push(rms.x); rh.y.push(rms.y); rh.z.push(rms.z);
-    if (rh.t.length > RHM) { rh.t.shift(); rh.x.shift(); rh.y.shift(); rh.z.shift(); }
+async function disconnect() {
+  if (device && device.gatt.connected) {
+    if (characteristic) await characteristic.stopNotifications().catch(()=>{});
+    device.gatt.disconnect();
   }
-  $('rmsBig').innerHTML = `${rms.t.toFixed(2)} <span style="font-size:.7rem;font-weight:400;color:var(--muted)">deg/s</span>`;
-  $('rmsX').textContent = rms.x.toFixed(2);
-  $('rmsY').textContent = rms.y.toFixed(2);
-  $('rmsZ').textContent = rms.z.toFixed(2);
-  $('gxVal').textContent = d.gx.toFixed(1);
-  $('gyVal').textContent = d.gy.toFixed(1);
-  $('gzVal').textContent = d.gz.toFixed(1);
-  $('gmag').textContent = Math.sqrt(d.gx ** 2 + d.gy ** 2 + d.gz ** 2).toFixed(1);
-  $('bufSamples').textContent = rows.length.toLocaleString();
-  $('bufSize').textContent = fs(bLen);
-  lastT = now;
-};
+  onDisconnect();
+}
 
-let pf = 0;
-(function loop() {
-  requestAnimationFrame(loop);
-  if (++pf % 2) return;
-  drawRMS(); drawRaw();
-})();
-window.addEventListener('resize', () => { drawRMS(); drawRaw(); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) lastT = 0; });
-if (!navigator.bluetooth) { toast('Web Bluetooth not supported — use Chrome or Edge', 'err'); $('btnConn').disabled = true; }
+function onDisconnect() {
+  btnConnect.disabled = false;
+  btnDisconnect.disabled = true;
+  btnRecord.disabled = true;
+  setStatus('', 'Disconnected');
+  log('Disconnected');
+}
+
+
+function onData(event) {
+  const v = event.target.value;
+  const sampleCount = v.getUint8(0);
+  const startSeq = v.getUint16(1, true);
+
+  // Packet-loss detection
+  if (expectedSeq !== null && startSeq !== expectedSeq) {
+    const gap = (startSeq - expectedSeq + 65536) % 65536;
+    totalPacketsLost += gap;
+    log(`⚠ Lost ${gap} samples (expected seq ${expectedSeq}, got ${startSeq})`, 'err');
+  }
+  expectedSeq = (startSeq + sampleCount) % 65536;
+
+  const now = performance.now();
+  const dt = now - lastSampleTime;
+  lastSampleTime = now;
+
+  for (let i = 0; i < sampleCount; i++) {
+    const off = 3 + i * 14;
+    const ax = v.getInt16(off + 0, true) / ACCEL_SENSITIVITY;
+    const ay = v.getInt16(off + 2, true) / ACCEL_SENSITIVITY;
+    const az = v.getInt16(off + 4, true) / ACCEL_SENSITIVITY;
+    const gx = v.getInt16(off + 6, true) / GYRO_SENSITIVITY;
+    const gy = v.getInt16(off + 8, true) / GYRO_SENSITIVITY;
+    const gz = v.getInt16(off + 10, true) / GYRO_SENSITIVITY;
+
+    const seq = (startSeq + i) % 65536;
+
+    // Push to chart
+    accelBuf.x[chartIdx] = ax;
+    accelBuf.y[chartIdx] = ay;
+    accelBuf.z[chartIdx] = az;
+    gyroBuf.x[chartIdx]  = gx;
+    gyroBuf.y[chartIdx]  = gy;
+    gyroBuf.z[chartIdx]  = gz;
+    chartIdx = (chartIdx + 1) % chartSize;
+
+    // Record for CSV
+    if (recording) {
+      recordedData.push({ seq, t: now.toFixed(2), ax, ay, az, gx, gy, gz });
+    }
+
+    totalSamples++;
+  }
+
+  // Rate calculation (update every 500ms)
+  rateAccum += sampleCount;
+  rateCount++;
+  if (now - lastRateUpdate >= 500) {
+    const elapsed = (now - lastRateUpdate) / 1000;
+    currentRate = rateAccum / elapsed;
+    rateAccum = 0;
+    lastRateUpdate = now;
+    updateStats();
+  }
+}
+
+
+function updateStats() {
+  const rateEl = $('statRate');
+  rateEl.textContent = currentRate.toFixed(1) + ' Hz';
+  rateEl.className = 'stat-value ' + (
+    currentRate > 190 ? 'good' :
+    currentRate > 150 ? 'warn' : 'bad'
+  );
+
+  $('statSamples').textContent = totalSamples.toLocaleString();
+
+  const lostEl = $('statLost');
+  lostEl.textContent = totalPacketsLost.toLocaleString();
+  lostEl.className = 'stat-value ' + (totalPacketsLost === 0 ? 'good' : 'bad');
+
+  const expectedTotal = totalSamples + totalPacketsLost;
+  const lossPct = expectedTotal > 0 ? (totalPacketsLost / expectedTotal) * 100 : 0;
+  const pctEl = $('statLossPct');
+  pctEl.textContent = lossPct.toFixed(2) + '%';
+  pctEl.className = 'stat-value ' + (lossPct < 0.1 ? 'good' : lossPct < 2 ? 'warn' : 'bad');
+}
+
+
+function drawChart(canvasId, buf, yRange) {
+  const canvas = $(canvasId);
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  if (canvas.width !== rect.width * dpr) {
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = rect.width, H = rect.height;
+
+  ctx.fillStyle = '#0f1419';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#2a3441';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i <= 4; i++) {
+    const y = (H / 4) * i;
+    ctx.moveTo(0, y); ctx.lineTo(W, y);
+  }
+  for (let i = 0; i <= 10; i++) {
+    const x = (W / 10) * i;
+    ctx.moveTo(x, 0); ctx.lineTo(x, H);
+  }
+  ctx.stroke();
+
+  // Zero line
+  ctx.strokeStyle = '#3a4451';
+  ctx.beginPath();
+  ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2);
+  ctx.stroke();
+
+  // Y-axis labels
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '10px monospace';
+  ctx.fillText(`+${yRange}`, 4, 12);
+  ctx.fillText(`0`, 4, H / 2 - 2);
+  ctx.fillText(`-${yRange}`, 4, H - 4);
+
+  // Data lines
+  const colors = ['#ff6b6b', '#4ecdc4', '#ffe66d'];
+  const axes = ['x', 'y', 'z'];
+  axes.forEach((axis, ai) => {
+    ctx.strokeStyle = colors[ai];
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < chartSize; i++) {
+      const idx = (chartIdx + i) % chartSize;
+      const val = buf[axis][idx];
+      if (val === 0 && i > 0 && buf[axis][(chartIdx + i - 1) % chartSize] === 0) continue;
+      const x = (i / chartSize) * W;
+      const y = H / 2 - (val / yRange) * (H / 2);
+      if (!started) { ctx.moveTo(x, y); started = true; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  });
+}
+
+function renderLoop() {
+  drawChart('chartAccel', accelBuf, 2);   // ±2 g
+  drawChart('chartGyro', gyroBuf, 250);   // ±250 °/s
+  requestAnimationFrame(renderLoop);
+}
+renderLoop();
+
+
+function toggleRecord() {
+  recording = !recording;
+  if (recording) {
+    recordedData = [];
+    btnRecord.textContent = '⏹ Stop';
+    btnRecord.classList.remove('secondary');
+    btnRecord.classList.add('danger');
+    log('● Recording started');
+  } else {
+    btnRecord.textContent = '⏺ Record';
+    btnRecord.classList.remove('danger');
+    btnRecord.classList.add('secondary');
+    btnDownload.disabled = recordedData.length === 0;
+    log(`■ Recording stopped — ${recordedData.length} samples captured`, 'ok');
+  }
+}
+
+function downloadCSV() {
+  if (recordedData.length === 0) return;
+  const header = 'seq,t_ms,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps\n';
+  const rows = recordedData.map(d =>
+    `${d.seq},${d.t},${d.ax.toFixed(5)},${d.ay.toFixed(5)},${d.az.toFixed(5)},${d.gx.toFixed(3)},${d.gy.toFixed(3)},${d.gz.toFixed(3)}`
+  ).join('\n');
+
+  const blob = new Blob([header + rows], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  a.href = url;
+  a.download = `tremor_${ts}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  log(`⬇ Downloaded tremor_${ts}.csv (${recordedData.length} samples)`, 'ok');
+}
+
+
+btnConnect.addEventListener('click', connect);
+btnDisconnect.addEventListener('click', disconnect);
+btnRecord.addEventListener('click', toggleRecord);
+btnDownload.addEventListener('click', downloadCSV);
+
+log('Ready. Click Connect to pair with TREMOR_IMU.');
 </script>
+
 </body>
 </html>
