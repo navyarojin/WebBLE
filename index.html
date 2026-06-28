@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TremorBLE Reader (81-byte format)</title>
+    <title>TREMOR_IMU BLE Reader</title>
     <style>
         body { font-family: Arial, sans-serif; }
         #status { margin-bottom: 10px; }
@@ -12,15 +12,19 @@
     </style>
 </head>
 <body>
-    <h1>Connect to TremorBLE (81-byte format)</h1>
+
+    <h1>Connect to TREMOR_IMU</h1>
     <div id="status">Ready to connect.</div>
     <button id="connectButton">Connect to ESP32-C3</button>
     <button id="disconnectButton" disabled>Disconnect</button>
-    <h2>Data Stream (81-byte format):</h2>
+
+    <h2>Data Stream:</h2>
     <pre id="dataLog"></pre>
+
     <script>
         const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
         const CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+
         let bluetoothDevice = null;
         let server = null;
         let service = null;
@@ -29,32 +33,33 @@
         let statusDiv = document.getElementById('status');
         let connectButton = document.getElementById('connectButton');
         let disconnectButton = document.getElementById('disconnectButton');
+
+        // --- Helper Functions ---
+
         function logData(message) {
             const timestamp = new Date().toISOString();
             dataLog.textContent += `[${timestamp}] ${message}\n`;
-            dataLog.scrollTop = dataLog.scrollHeight;
+            dataLog.scrollTop = dataLog.scrollHeight; // Auto-scroll
         }
+
         function logStatus(message) {
             statusDiv.textContent = message;
             console.log(`[Status] ${message}`);
         }
+
         function logError(message) {
             logStatus(`ERROR: ${message}`);
             console.error(message);
         }
-        function rawTempToCelsius(rawTemp) {
-            return (rawTemp / 340.0) + 36.53;
-        }
+
         function decodePacket(dataView, offset = 0) {
-            const esp32TimestampMs = dataView.getUint32(offset + 0, true);
-            const sampleCount = dataView.getUint8(offset + 4);
-            const startSeq = dataView.getUint16(offset + 5, true);
-            const mpuTempRaw = dataView.getInt16(offset + 7, true);
-            const batteryLevelRaw = dataView.getUint16(offset + 9, true);
-            const batteryPercent = batteryLevelRaw / 100.0;
+            // Assuming little-endian format as per your Arduino code
+            const sampleCount = dataView.getUint8(offset + 0);
+            const startSeq = dataView.getUint16(offset + 1, true); // true for little-endian
+
             const samples = [];
             for (let i = 0; i < sampleCount; i++) {
-                const sampleOffset = offset + 11 + (i * 14);
+                const sampleOffset = offset + 3 + (i * 14);
                 const ax = dataView.getInt16(sampleOffset + 0, true);
                 const ay = dataView.getInt16(sampleOffset + 2, true);
                 const az = dataView.getInt16(sampleOffset + 4, true);
@@ -63,55 +68,79 @@
                 const gz = dataView.getInt16(sampleOffset + 10, true);
                 samples.push({ ax, ay, az, gx, gy, gz });
             }
-            const mpuTempCelsius = rawTempToCelsius(mpuTempRaw);
-            return { esp32TimestampMs, sampleCount, startSeq, mpuTempRaw, mpuTempCelsius, batteryLevelRaw, batteryPercent, samples };
+
+            return { sampleCount, startSeq, samples };
         }
+
+
+        // --- Button Event Handlers ---
+
         connectButton.addEventListener('click', async () => {
             if (!navigator.bluetooth) {
                 logError('Web Bluetooth API is not available in your browser.');
                 return;
             }
+
             try {
                 logStatus('Requesting Bluetooth Device...');
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: 'TremorBLE' }],
+                    filters: [{ name: 'TREMOR_IMU' }], // Match the name from your ESP32
                     optionalServices: [SERVICE_UUID]
                 });
+
                 logStatus(`Connecting to Device: ${bluetoothDevice.name}...`);
                 server = await bluetoothDevice.gatt.connect();
+
                 logStatus('Getting Service...');
                 service = await server.getPrimaryService(SERVICE_UUID);
+
                 logStatus('Getting Characteristic...');
                 characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+
+                // *** CRITICAL: Request the larger MTU before starting notifications ***
                 logStatus('Requesting larger MTU...');
-                const maxMtu = 256;
+                const maxMtu = 256; // As requested by your ESP32 code
                 try {
                     const requestedMtu = await server.requestMtu(maxMtu);
                     logStatus(`MTU set to: ${requestedMtu} (Requested: ${maxMtu})`);
                 } catch (error) {
-                     logStatus(`MTU request failed: ${error.message}. Default MTU might be insufficient for 81-byte packets.`);
+                     // MTU request might fail depending on the OS/browser/client capability.
+                     // The connection might still work if the default MTU is sufficient (>= 73),
+                     // but it's safer to assume it's needed based on your code's design.
+                     logStatus(`MTU request failed: ${error.message}. Default MTU might be insufficient for 73-byte packets.`);
+                     // Optionally, warn the user or proceed anyway if you know the default MTU is large enough
                 }
+
+
                 logStatus('Starting Notifications...');
                 await characteristic.startNotifications();
+
+                // Add the event listener for characteristic value changes (incoming data)
                 characteristic.addEventListener('characteristicvaluechanged', (event) => {
                     const value = event.target.value;
-                    const receiveTimestamp = performance.now();
-                    const receiveTimeMs = Math.round(receiveTimestamp);
+                    const timestamp = performance.now(); // High-res timestamp for analysis
+
+                    // Decode the incoming packet
                     try {
                         const decoded = decodePacket(value.buffer);
-                        logData(`ESP32_Ts: ${decoded.esp32TimestampMs}ms, Seq: ${decoded.startSeq}, Recv_Ts: ${receiveTimeMs}ms, MPU_Temp: ${decoded.mpuTempCelsius.toFixed(2)}°C, Batt: ${decoded.batteryPercent.toFixed(2)}%, Samples: ${decoded.samples.length}`);
+                        logData(`Seq: ${decoded.startSeq}, Samples: ${decoded.samples.length}`);
+                        // Optional: Log raw values for debugging
+                        // console.log(decoded.samples);
                     } catch (decodeErr) {
-                        logError(`Failed to decode packet at browser time ${receiveTimeMs}ms: ${decodeErr.message}`);
+                        logError(`Failed to decode packet: ${decodeErr.message}`);
                         console.error(decodeErr);
                     }
                 });
-                logStatus('Connected and listening for data (81-byte format)!');
+
+                logStatus('Connected and listening for data!');
                 connectButton.disabled = true;
                 disconnectButton.disabled = false;
+
             } catch (error) {
                 logError(`Connection failed: ${error.message}`);
             }
         });
+
         disconnectButton.addEventListener('click', () => {
             if (bluetoothDevice && bluetoothDevice.gatt.connected) {
                 bluetoothDevice.gatt.disconnect();
@@ -120,11 +149,15 @@
                  logStatus('No active connection to disconnect.');
             }
         });
+
+        // Handle disconnection gracefully
         window.addEventListener('beforeunload', () => {
              if (bluetoothDevice && bluetoothDevice.gatt.connected) {
                  bluetoothDevice.gatt.disconnect();
              }
         });
+
     </script>
+
 </body>
 </html>
