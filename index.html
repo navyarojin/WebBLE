@@ -1,524 +1,187 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>TREMOR_IMU — Web Receiver</title>
-<style>
-  :root {
-    --bg: #0f1419;
-    --panel: #1a2029;
-    --border: #2a3441;
-    --text: #e6edf3;
-    --muted: #8b949e;
-    --accent: #58a6ff;
-    --good: #3fb950;
-    --bad: #f85149;
-    --warn: #d29922;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    padding: 20px;
-    min-height: 100vh;
-  }
-  h1 { font-size: 1.4rem; margin-bottom: 4px; color: var(--accent); }
-  .subtitle { color: var(--muted); font-size: 0.85rem; margin-bottom: 20px; }
-  .grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 16px;
-  }
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px;
-  }
-  .panel h2 {
-    font-size: 0.9rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 12px;
-  }
-  button {
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    padding: 10px 18px;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    margin-right: 8px;
-    transition: opacity 0.15s;
-  }
-  button:hover:not(:disabled) { opacity: 0.85; }
-  button:disabled { opacity: 0.4; cursor: not-allowed; }
-  button.danger { background: var(--bad); }
-  button.secondary { background: var(--border); }
-  .status-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-    font-size: 0.9rem;
-  }
-  .dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--muted);
-  }
-  .dot.connected { background: var(--good); box-shadow: 0 0 8px var(--good); }
-  .dot.error { background: var(--bad); }
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-  }
-  .stat {
-    background: var(--bg);
-    padding: 10px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-  }
-  .stat-label {
-    font-size: 0.7rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    margin-bottom: 4px;
-  }
-  .stat-value {
-    font-size: 1.3rem;
-    font-weight: 700;
-    font-family: "SF Mono", Consolas, monospace;
-  }
-  .stat-value.good { color: var(--good); }
-  .stat-value.warn { color: var(--warn); }
-  .stat-value.bad { color: var(--bad); }
-  canvas {
-    width: 100%;
-    height: 280px;
-    background: var(--bg);
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    display: block;
-  }
-  .chart-legend {
-    display: flex;
-    gap: 16px;
-    margin-top: 8px;
-    font-size: 0.8rem;
-    color: var(--muted);
-  }
-  .legend-item { display: flex; align-items: center; gap: 6px; }
-  .legend-swatch {
-    width: 12px;
-    height: 3px;
-    border-radius: 2px;
-  }
-  select, input {
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 6px 10px;
-    font-size: 0.85rem;
-    margin-right: 8px;
-  }
-  .controls {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-  .log {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 10px;
-    height: 150px;
-    overflow-y: auto;
-    font-family: "SF Mono", Consolas, monospace;
-    font-size: 0.75rem;
-    color: var(--muted);
-  }
-  .log-entry { margin-bottom: 2px; }
-  .log-entry.err { color: var(--bad); }
-  .log-entry.ok { color: var(--good); }
-  @media (max-width: 800px) {
-    .grid { grid-template-columns: 1fr; }
-    .stats { grid-template-columns: repeat(2, 1fr); }
-  }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TREMOR_IMU BLE Reader with ESP32 Ts, MPU Temp, Sim Batt</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        #status { margin-bottom: 10px; }
+        #dataLog { width: 100%; height: 400px; overflow-y: scroll; white-space: pre-wrap; }
+        button { padding: 10px 20px; font-size: 16px; margin-right: 10px; }
+    </style>
 </head>
 <body>
 
-<h1>⚡ TREMOR_IMU Web Receiver</h1>
-<div class="subtitle">ESP32-C3 + MPU6050 · 200 Hz · Batched BLE (5 samples / notification)</div>
+    <h1>Connect to TREMOR_IMU (with ESP32 Ts, MPU Temp, Sim Batt)</h1>
+    <div id="status">Ready to connect.</div>
+    <button id="connectButton">Connect to ESP32-C3/S3</button>
+    <button id="disconnectButton" disabled>Disconnect</button>
 
-<div class="panel" style="margin-bottom: 16px;">
-  <div class="controls">
-    <button id="btnConnect">🔗 Connect</button>
-    <button id="btnDisconnect" class="danger" disabled>Disconnect</button>
-    <button id="btnRecord" class="secondary" disabled>⏺ Record</button>
-    <button id="btnDownload" class="secondary" disabled>⬇ Download CSV</button>
-    <div class="status-row" style="margin: 0; margin-left: auto;">
-      <div class="dot" id="statusDot"></div>
-      <span id="statusText">Disconnected</span>
-    </div>
-  </div>
+    <h2>Data Stream (with ESP32 Ts, MPU Temp, Sim Batt):</h2>
+    <pre id="dataLog"></pre>
 
-  <div class="stats">
-    <div class="stat">
-      <div class="stat-label">Sample Rate</div>
-      <div class="stat-value" id="statRate">— Hz</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">Samples</div>
-      <div class="stat-value" id="statSamples">0</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">Packets Lost</div>
-      <div class="stat-value good" id="statLost">0</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">Loss %</div>
-      <div class="stat-value good" id="statLossPct">0.00%</div>
-    </div>
-  </div>
-</div>
+    <script>
+        const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+        const CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 
-<div class="grid">
-  <div class="panel">
-    <h2>Accelerometer (g)</h2>
-    <canvas id="chartAccel"></canvas>
-    <div class="chart-legend">
-      <div class="legend-item"><div class="legend-swatch" style="background:#ff6b6b"></div>X</div>
-      <div class="legend-item"><div class="legend-swatch" style="background:#4ecdc4"></div>Y</div>
-      <div class="legend-item"><div class="legend-swatch" style="background:#ffe66d"></div>Z</div>
-    </div>
-  </div>
-  <div class="panel">
-    <h2>Gyroscope (°/s)</h2>
-    <canvas id="chartGyro"></canvas>
-    <div class="chart-legend">
-      <div class="legend-item"><div class="legend-swatch" style="background:#ff6b6b"></div>X</div>
-      <div class="legend-item"><div class="legend-swatch" style="background:#4ecdc4"></div>Y</div>
-      <div class="legend-item"><div class="legend-swatch" style="background:#ffe66d"></div>Z</div>
-    </div>
-  </div>
-</div>
+        let bluetoothDevice = null;
+        let server = null;
+        let service = null;
+        let characteristic = null;
+        let dataLog = document.getElementById('dataLog');
+        let statusDiv = document.getElementById('status');
+        let connectButton = document.getElementById('connectButton');
+        let disconnectButton = document.getElementById('disconnectButton');
 
-<div class="panel">
-  <h2>Event Log</h2>
-  <div class="log" id="log"></div>
-</div>
+        // --- Helper Functions ---
 
-<script>
+        function logData(message) {
+            const timestamp = new Date().toISOString();
+            dataLog.textContent += `[${timestamp}] ${message}\n`;
+            dataLog.scrollTop = dataLog.scrollHeight; // Auto-scroll
+        }
 
-const SVC_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-const CHR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
-const ACCEL_SENSITIVITY = 16384;  // LSB/g  (±2 g range)
-const GYRO_SENSITIVITY  = 131;    // LSB/(°/s) (±250 °/s range)
-const SAMPLES_PER_PACKET = 5;
-const CHART_WINDOW_SEC = 5;       // rolling window
-const TARGET_RATE = 200;          // Hz
+        function logStatus(message) {
+            statusDiv.textContent = message;
+            console.log(`[Status] ${message}`);
+        }
 
+        function logError(message) {
+            logStatus(`ERROR: ${message}`);
+            console.error(message);
+        }
 
-let device = null, characteristic = null;
-let recording = false;
-let recordedData = [];
-let totalSamples = 0;
-let totalPacketsLost = 0;
-let expectedSeq = null;
-let lastSampleTime = performance.now();
-let rateAccum = 0, rateCount = 0, lastRateUpdate = performance.now();
-let currentRate = 0;
+        // Function to convert raw MPU6050 temperature to Celsius
+        // Formula: Temperature in degrees C = (TEMP_OUT Register Value) / 340 + 36.53
+        function rawTempToCelsius(rawTemp) {
+            return (rawTemp / 340.0) + 36.53;
+        }
 
-// Chart buffers (circular)
-const chartSize = TARGET_RATE * CHART_WINDOW_SEC;
-const accelBuf = { x: new Float32Array(chartSize), y: new Float32Array(chartSize), z: new Float32Array(chartSize) };
-const gyroBuf  = { x: new Float32Array(chartSize), y: new Float32Array(chartSize), z: new Float32Array(chartSize) };
-let chartIdx = 0;
+        function decodePacket(dataView, offset = 0) {
+            // New packet format (81 bytes):
+            // [0:3]    uint32  esp32_timestamp_ms (little-endian)
+            // [4]      uint8   sample_count (always 5)
+            // [5:6]    uint16  start_seq    (little-endian)
+            // [7:8]    int16   mpu_temp_raw (little-endian)
+            // [9:10]   uint16  battery_level_percent (little-endian, 0-10000)
+            // [11:24]  sample 1 (14 bytes)
+            // ... up to sample 5
+
+            const esp32TimestampMs = dataView.getUint32(offset + 0, true); // true for little-endian
+            const sampleCount = dataView.getUint8(offset + 4);
+            const startSeq = dataView.getUint16(offset + 5, true); // true for little-endian
+            const mpuTempRaw = dataView.getInt16(offset + 7, true); // true for little-endian
+            const batteryLevelRaw = dataView.getUint16(offset + 9, true); // true for little-endian
+            const batteryPercent = batteryLevelRaw / 100.0; // Convert from 0-10000 to 0.00-100.00%
+
+            const samples = [];
+            for (let i = 0; i < sampleCount; i++) {
+                const sampleOffset = offset + 11 + (i * 14); // Offset starts at 11 now
+                const ax = dataView.getInt16(sampleOffset + 0, true);
+                const ay = dataView.getInt16(sampleOffset + 2, true);
+                const az = dataView.getInt16(sampleOffset + 4, true);
+                const gx = dataView.getInt16(sampleOffset + 6, true);
+                const gy = dataView.getInt16(sampleOffset + 8, true);
+                const gz = dataView.getInt16(sampleOffset + 10, true);
+                samples.push({ ax, ay, az, gx, gy, gz });
+            }
+
+            // Calculate MPU temperature in Celsius
+            const mpuTempCelsius = rawTempToCelsius(mpuTempRaw);
+
+            return { esp32TimestampMs, sampleCount, startSeq, mpuTempRaw, mpuTempCelsius, batteryLevelRaw, batteryPercent, samples };
+        }
 
 
-const $ = id => document.getElementById(id);
-const btnConnect = $('btnConnect'), btnDisconnect = $('btnDisconnect');
-const btnRecord = $('btnRecord'), btnDownload = $('btnDownload');
-const statusDot = $('statusDot'), statusText = $('statusText');
-const logEl = $('log');
+        // --- Button Event Handlers ---
 
-function log(msg, type = '') {
-  const entry = document.createElement('div');
-  entry.className = 'log-entry ' + type;
-  const ts = new Date().toLocaleTimeString();
-  entry.textContent = `[${ts}] ${msg}`;
-  logEl.appendChild(entry);
-  logEl.scrollTop = logEl.scrollHeight;
-}
+        connectButton.addEventListener('click', async () => {
+            if (!navigator.bluetooth) {
+                logError('Web Bluetooth API is not available in your browser.');
+                return;
+            }
 
-function setStatus(state, text) {
-  statusDot.className = 'dot ' + state;
-  statusText.textContent = text;
-}
+            try {
+                logStatus('Requesting Bluetooth Device...');
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'TREMOR_IMU' }], // Match the name from your ESP32
+                    optionalServices: [SERVICE_UUID]
+                });
 
+                logStatus(`Connecting to Device: ${bluetoothDevice.name}...`);
+                server = await bluetoothDevice.gatt.connect();
 
-async function connect() {
-  try {
-    log('Requesting BLE device…');
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ name: 'TREMOR_IMU' }],
-      optionalServices: [SVC_UUID]
-    });
+                logStatus('Getting Service...');
+                service = await server.getPrimaryService(SERVICE_UUID);
 
-    device.addEventListener('gattserverdisconnected', onDisconnect);
+                logStatus('Getting Characteristic...');
+                characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
 
-    log('Connecting to GATT…');
-    const server = await device.gatt.connect();
-    const service = await server.getPrimaryService(SVC_UUID);
-    characteristic = await service.getCharacteristic(CHR_UUID);
-
-    await characteristic.startNotifications();
-    characteristic.addEventListener('characteristicvaluechanged', onData);
-
-    btnConnect.disabled = true;
-    btnDisconnect.disabled = false;
-    btnRecord.disabled = false;
-    setStatus('connected', `Connected to ${device.name}`);
-    log('✓ Notifications started', 'ok');
-
-    // Reset counters
-    totalSamples = 0;
-    totalPacketsLost = 0;
-    expectedSeq = null;
-    lastSampleTime = performance.now();
-    lastRateUpdate = performance.now();
-    rateAccum = 0; rateCount = 0;
-    currentRate = 0;
-
-  } catch (err) {
-    log('✗ Connection failed: ' + err.message, 'err');
-    setStatus('error', 'Connection failed');
-  }
-}
-
-async function disconnect() {
-  if (device && device.gatt.connected) {
-    if (characteristic) await characteristic.stopNotifications().catch(()=>{});
-    device.gatt.disconnect();
-  }
-  onDisconnect();
-}
-
-function onDisconnect() {
-  btnConnect.disabled = false;
-  btnDisconnect.disabled = true;
-  btnRecord.disabled = true;
-  setStatus('', 'Disconnected');
-  log('Disconnected');
-}
+                // *** CRITICAL: Request the larger MTU before starting notifications ***
+                logStatus('Requesting larger MTU...');
+                const maxMtu = 256; // As requested by your ESP32 code
+                try {
+                    const requestedMtu = await server.requestMtu(maxMtu);
+                    logStatus(`MTU set to: ${requestedMtu} (Requested: ${maxMtu})`);
+                } catch (error) {
+                     // MTU request might fail depending on the OS/browser/client capability.
+                     // The connection might still work if the default MTU is sufficient (>= 81),
+                     // but it's safer to assume it's needed based on your code's design.
+                     logStatus(`MTU request failed: ${error.message}. Default MTU might be insufficient for 81-byte packets.`);
+                     // Optionally, warn the user or proceed anyway if you know the default MTU is large enough
+                }
 
 
-function onData(event) {
-  const v = event.target.value;
-  const sampleCount = v.getUint8(0);
-  const startSeq = v.getUint16(1, true);
+                logStatus('Starting Notifications...');
+                await characteristic.startNotifications();
 
-  // Packet-loss detection
-  if (expectedSeq !== null && startSeq !== expectedSeq) {
-    const gap = (startSeq - expectedSeq + 65536) % 65536;
-    totalPacketsLost += gap;
-    log(`⚠ Lost ${gap} samples (expected seq ${expectedSeq}, got ${startSeq})`, 'err');
-  }
-  expectedSeq = (startSeq + sampleCount) % 65536;
+                // Add the event listener for characteristic value changes (incoming data)
+                characteristic.addEventListener('characteristicvaluechanged', (event) => {
+                    const value = event.target.value;
+                    // Get high-resolution timestamp when packet is received by the browser
+                    const receiveTimestamp = performance.now();
+                    const receiveTimeMs = Math.round(receiveTimestamp);
 
-  const now = performance.now();
-  const dt = now - lastSampleTime;
-  lastSampleTime = now;
+                    // Decode the incoming packet
+                    try {
+                        const decoded = decodePacket(value.buffer);
+                        // Log ESP32 timestamp, sequence number, browser receive time, MPU temp, and simulated battery
+                        logData(`ESP32_Ts: ${decoded.esp32TimestampMs}ms, Seq: ${decoded.startSeq}, Recv_Ts: ${receiveTimeMs}ms, MPU_Temp: ${decoded.mpuTempCelsius.toFixed(2)}°C, Batt: ${decoded.batteryPercent.toFixed(2)}%, Samples: ${decoded.samples.length}`);
+                        // Optional: Log raw values for debugging (uncomment if needed)
+                        // console.log(`ESP32_Ts: ${decoded.esp32TimestampMs}ms, Recv_Ts: ${receiveTimeMs}ms - Seq: ${decoded.startSeq}, MPU_Temp_Raw: ${decoded.mpuTempRaw}, Batt_Raw: ${decoded.batteryLevelRaw}`, decoded.samples);
+                    } catch (decodeErr) {
+                        logError(`Failed to decode packet at browser time ${receiveTimeMs}ms: ${decodeErr.message}`);
+                        console.error(decodeErr);
+                    }
+                });
 
-  for (let i = 0; i < sampleCount; i++) {
-    const off = 3 + i * 14;
-    const ax = v.getInt16(off + 0, true) / ACCEL_SENSITIVITY;
-    const ay = v.getInt16(off + 2, true) / ACCEL_SENSITIVITY;
-    const az = v.getInt16(off + 4, true) / ACCEL_SENSITIVITY;
-    const gx = v.getInt16(off + 6, true) / GYRO_SENSITIVITY;
-    const gy = v.getInt16(off + 8, true) / GYRO_SENSITIVITY;
-    const gz = v.getInt16(off + 10, true) / GYRO_SENSITIVITY;
+                logStatus('Connected and listening for data with ESP32 Ts, MPU Temp, Sim Batt!');
+                connectButton.disabled = true;
+                disconnectButton.disabled = false;
 
-    const seq = (startSeq + i) % 65536;
+            } catch (error) {
+                logError(`Connection failed: ${error.message}`);
+            }
+        });
 
-    // Push to chart
-    accelBuf.x[chartIdx] = ax;
-    accelBuf.y[chartIdx] = ay;
-    accelBuf.z[chartIdx] = az;
-    gyroBuf.x[chartIdx]  = gx;
-    gyroBuf.y[chartIdx]  = gy;
-    gyroBuf.z[chartIdx]  = gz;
-    chartIdx = (chartIdx + 1) % chartSize;
+        disconnectButton.addEventListener('click', () => {
+            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                bluetoothDevice.gatt.disconnect();
+                logStatus('Disconnected by user.');
+            } else {
+                 logStatus('No active connection to disconnect.');
+            }
+        });
 
-    // Record for CSV
-    if (recording) {
-      recordedData.push({ seq, t: now.toFixed(2), ax, ay, az, gx, gy, gz });
-    }
+        // Handle disconnection gracefully
+        window.addEventListener('beforeunload', () => {
+             if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                 bluetoothDevice.gatt.disconnect();
+             }
+        });
 
-    totalSamples++;
-  }
-
-  // Rate calculation (update every 500ms)
-  rateAccum += sampleCount;
-  rateCount++;
-  if (now - lastRateUpdate >= 500) {
-    const elapsed = (now - lastRateUpdate) / 1000;
-    currentRate = rateAccum / elapsed;
-    rateAccum = 0;
-    lastRateUpdate = now;
-    updateStats();
-  }
-}
-
-
-function updateStats() {
-  const rateEl = $('statRate');
-  rateEl.textContent = currentRate.toFixed(1) + ' Hz';
-  rateEl.className = 'stat-value ' + (
-    currentRate > 190 ? 'good' :
-    currentRate > 150 ? 'warn' : 'bad'
-  );
-
-  $('statSamples').textContent = totalSamples.toLocaleString();
-
-  const lostEl = $('statLost');
-  lostEl.textContent = totalPacketsLost.toLocaleString();
-  lostEl.className = 'stat-value ' + (totalPacketsLost === 0 ? 'good' : 'bad');
-
-  const expectedTotal = totalSamples + totalPacketsLost;
-  const lossPct = expectedTotal > 0 ? (totalPacketsLost / expectedTotal) * 100 : 0;
-  const pctEl = $('statLossPct');
-  pctEl.textContent = lossPct.toFixed(2) + '%';
-  pctEl.className = 'stat-value ' + (lossPct < 0.1 ? 'good' : lossPct < 2 ? 'warn' : 'bad');
-}
-
-
-function drawChart(canvasId, buf, yRange) {
-  const canvas = $(canvasId);
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  if (canvas.width !== rect.width * dpr) {
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-  }
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const W = rect.width, H = rect.height;
-
-  ctx.fillStyle = '#0f1419';
-  ctx.fillRect(0, 0, W, H);
-
-  // Grid
-  ctx.strokeStyle = '#2a3441';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let i = 0; i <= 4; i++) {
-    const y = (H / 4) * i;
-    ctx.moveTo(0, y); ctx.lineTo(W, y);
-  }
-  for (let i = 0; i <= 10; i++) {
-    const x = (W / 10) * i;
-    ctx.moveTo(x, 0); ctx.lineTo(x, H);
-  }
-  ctx.stroke();
-
-  // Zero line
-  ctx.strokeStyle = '#3a4451';
-  ctx.beginPath();
-  ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2);
-  ctx.stroke();
-
-  // Y-axis labels
-  ctx.fillStyle = '#8b949e';
-  ctx.font = '10px monospace';
-  ctx.fillText(`+${yRange}`, 4, 12);
-  ctx.fillText(`0`, 4, H / 2 - 2);
-  ctx.fillText(`-${yRange}`, 4, H - 4);
-
-  // Data lines
-  const colors = ['#ff6b6b', '#4ecdc4', '#ffe66d'];
-  const axes = ['x', 'y', 'z'];
-  axes.forEach((axis, ai) => {
-    ctx.strokeStyle = colors[ai];
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    let started = false;
-    for (let i = 0; i < chartSize; i++) {
-      const idx = (chartIdx + i) % chartSize;
-      const val = buf[axis][idx];
-      if (val === 0 && i > 0 && buf[axis][(chartIdx + i - 1) % chartSize] === 0) continue;
-      const x = (i / chartSize) * W;
-      const y = H / 2 - (val / yRange) * (H / 2);
-      if (!started) { ctx.moveTo(x, y); started = true; }
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-  });
-}
-
-function renderLoop() {
-  drawChart('chartAccel', accelBuf, 2);   // ±2 g
-  drawChart('chartGyro', gyroBuf, 250);   // ±250 °/s
-  requestAnimationFrame(renderLoop);
-}
-renderLoop();
-
-
-function toggleRecord() {
-  recording = !recording;
-  if (recording) {
-    recordedData = [];
-    btnRecord.textContent = '⏹ Stop';
-    btnRecord.classList.remove('secondary');
-    btnRecord.classList.add('danger');
-    log('● Recording started');
-  } else {
-    btnRecord.textContent = '⏺ Record';
-    btnRecord.classList.remove('danger');
-    btnRecord.classList.add('secondary');
-    btnDownload.disabled = recordedData.length === 0;
-    log(`■ Recording stopped — ${recordedData.length} samples captured`, 'ok');
-  }
-}
-
-function downloadCSV() {
-  if (recordedData.length === 0) return;
-  const header = 'seq,t_ms,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps\n';
-  const rows = recordedData.map(d =>
-    `${d.seq},${d.t},${d.ax.toFixed(5)},${d.ay.toFixed(5)},${d.az.toFixed(5)},${d.gx.toFixed(3)},${d.gy.toFixed(3)},${d.gz.toFixed(3)}`
-  ).join('\n');
-
-  const blob = new Blob([header + rows], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  a.href = url;
-  a.download = `tremor_${ts}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  log(`⬇ Downloaded tremor_${ts}.csv (${recordedData.length} samples)`, 'ok');
-}
-
-
-btnConnect.addEventListener('click', connect);
-btnDisconnect.addEventListener('click', disconnect);
-btnRecord.addEventListener('click', toggleRecord);
-btnDownload.addEventListener('click', downloadCSV);
-
-log('Ready. Click Connect to pair with TREMOR_IMU.');
-</script>
+    </script>
 
 </body>
 </html>
