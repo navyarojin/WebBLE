@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TREMOR_IMU BLE Reader (Original 73-byte format)</title>
+    <title>TREMOR_IMU BLE Reader (81-byte format)</title>
     <style>
         body { font-family: Arial, sans-serif; }
         #status { margin-bottom: 10px; }
@@ -12,11 +12,11 @@
     </style>
 </head>
 <body>
-    <h1>Connect to TREMOR_IMU (Original 73-byte format)</h1>
+    <h1>Connect to TREMOR_IMU (81-byte format)</h1>
     <div id="status">Ready to connect.</div>
     <button id="connectButton">Connect to ESP32-C3</button>
     <button id="disconnectButton" disabled>Disconnect</button>
-    <h2>Data Stream (Original 73-byte format):</h2>
+    <h2>Data Stream (81-byte format):</h2>
     <pre id="dataLog"></pre>
     <script>
         const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
@@ -42,12 +42,19 @@
             logStatus(`ERROR: ${message}`);
             console.error(message);
         }
+        function rawTempToCelsius(rawTemp) {
+            return (rawTemp / 340.0) + 36.53;
+        }
         function decodePacket(dataView, offset = 0) {
-            const sampleCount = dataView.getUint8(offset + 0);
-            const startSeq = dataView.getUint16(offset + 1, true);
+            const esp32TimestampMs = dataView.getUint32(offset + 0, true);
+            const sampleCount = dataView.getUint8(offset + 4);
+            const startSeq = dataView.getUint16(offset + 5, true);
+            const mpuTempRaw = dataView.getInt16(offset + 7, true);
+            const batteryLevelRaw = dataView.getUint16(offset + 9, true);
+            const batteryPercent = batteryLevelRaw / 100.0;
             const samples = [];
             for (let i = 0; i < sampleCount; i++) {
-                const sampleOffset = offset + 3 + (i * 14);
+                const sampleOffset = offset + 11 + (i * 14);
                 const ax = dataView.getInt16(sampleOffset + 0, true);
                 const ay = dataView.getInt16(sampleOffset + 2, true);
                 const az = dataView.getInt16(sampleOffset + 4, true);
@@ -56,7 +63,8 @@
                 const gz = dataView.getInt16(sampleOffset + 10, true);
                 samples.push({ ax, ay, az, gx, gy, gz });
             }
-            return { sampleCount, startSeq, samples };
+            const mpuTempCelsius = rawTempToCelsius(mpuTempRaw);
+            return { esp32TimestampMs, sampleCount, startSeq, mpuTempRaw, mpuTempCelsius, batteryLevelRaw, batteryPercent, samples };
         }
         connectButton.addEventListener('click', async () => {
             if (!navigator.bluetooth) {
@@ -81,7 +89,7 @@
                     const requestedMtu = await server.requestMtu(maxMtu);
                     logStatus(`MTU set to: ${requestedMtu} (Requested: ${maxMtu})`);
                 } catch (error) {
-                     logStatus(`MTU request failed: ${error.message}. Default MTU might be insufficient for 73-byte packets.`);
+                     logStatus(`MTU request failed: ${error.message}. Default MTU might be insufficient for 81-byte packets.`);
                 }
                 logStatus('Starting Notifications...');
                 await characteristic.startNotifications();
@@ -91,13 +99,13 @@
                     const receiveTimeMs = Math.round(receiveTimestamp);
                     try {
                         const decoded = decodePacket(value.buffer);
-                        logData(`Seq: ${decoded.startSeq}, Recv_Ts: ${receiveTimeMs}ms, Samples: ${decoded.samples.length}`);
+                        logData(`ESP32_Ts: ${decoded.esp32TimestampMs}ms, Seq: ${decoded.startSeq}, Recv_Ts: ${receiveTimeMs}ms, MPU_Temp: ${decoded.mpuTempCelsius.toFixed(2)}°C, Batt: ${decoded.batteryPercent.toFixed(2)}%, Samples: ${decoded.samples.length}`);
                     } catch (decodeErr) {
                         logError(`Failed to decode packet at browser time ${receiveTimeMs}ms: ${decodeErr.message}`);
                         console.error(decodeErr);
                     }
                 });
-                logStatus('Connected and listening for data (73-byte format)!');
+                logStatus('Connected and listening for data (81-byte format)!');
                 connectButton.disabled = true;
                 disconnectButton.disabled = false;
             } catch (error) {
