@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TREMOR_IMU BLE Reader with ESP32 Ts, MPU Temp, Sim Batt</title>
+    <title>TREMOR_IMU BLE Reader (81-byte format: Ts, Temp, Batt)</title>
     <style>
         body { font-family: Arial, sans-serif; }
         #status { margin-bottom: 10px; }
@@ -13,12 +13,12 @@
 </head>
 <body>
 
-    <h1>Connect to TREMOR_IMU (with ESP32 Ts, MPU Temp, Sim Batt)</h1>
+    <h1>Connect to TREMOR_IMU (81-byte: Ts, Temp, Batt)</h1>
     <div id="status">Ready to connect.</div>
-    <button id="connectButton">Connect to ESP32-C3/S3</button>
+    <button id="connectButton">Connect to ESP32-C3</button>
     <button id="disconnectButton" disabled>Disconnect</button>
 
-    <h2>Data Stream (with ESP32 Ts, MPU Temp, Sim Batt):</h2>
+    <h2>Data Stream (81-byte: Ts, Temp, Batt):</h2>
     <pre id="dataLog"></pre>
 
     <script>
@@ -156,7 +156,7 @@
                     }
                 });
 
-                logStatus('Connected and listening for data with ESP32 Ts, MPU Temp, Sim Batt!');
+                logStatus('Connected and listening for data (81-byte format: Ts, Temp, Batt)!');
                 connectButton.disabled = true;
                 disconnectButton.disabled = false;
 
