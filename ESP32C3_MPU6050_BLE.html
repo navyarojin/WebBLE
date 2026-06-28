@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TREMOR_IMU BLE Reader with ESP32 Ts, MPU Temp, Sim Batt</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        #status { margin-bottom: 10px; }
+        #dataLog { width: 100%; height: 400px; overflow-y: scroll; white-space: pre-wrap; }
+        button { padding: 10px 20px; font-size: 16px; margin-right: 10px; }
+    </style>
+</head>
+<body>
+
+    <h1>Connect to TREMOR_IMU (with ESP32 Ts, MPU Temp, Sim Batt)</h1>
+    <div id="status">Ready to connect.</div>
+    <button id="connectButton">Connect to ESP32-C3/S3</button>
+    <button id="disconnectButton" disabled>Disconnect</button>
+
+    <h2>Data Stream (with ESP32 Ts, MPU Temp, Sim Batt):</h2>
+    <pre id="dataLog"></pre>
+
+    <script>
+        const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+        const CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+
+        let bluetoothDevice = null;
+        let server = null;
+        let service = null;
+        let characteristic = null;
+        let dataLog = document.getElementById('dataLog');
+        let statusDiv = document.getElementById('status');
+        let connectButton = document.getElementById('connectButton');
+        let disconnectButton = document.getElementById('disconnectButton');
+
+        // --- Helper Functions ---
+
+        function logData(message) {
+            const timestamp = new Date().toISOString();
+            dataLog.textContent += `[${timestamp}] ${message}\n`;
+            dataLog.scrollTop = dataLog.scrollHeight; // Auto-scroll
+        }
+
+        function logStatus(message) {
+            statusDiv.textContent = message;
+            console.log(`[Status] ${message}`);
+        }
+
+        function logError(message) {
+            logStatus(`ERROR: ${message}`);
+            console.error(message);
+        }
+
+        // Function to convert raw MPU6050 temperature to Celsius
+        // Formula: Temperature in degrees C = (TEMP_OUT Register Value) / 340 + 36.53
+        function rawTempToCelsius(rawTemp) {
+            return (rawTemp / 340.0) + 36.53;
+        }
+
+        function decodePacket(dataView, offset = 0) {
+            // New packet format (81 bytes):
+            // [0:3]    uint32  esp32_timestamp_ms (little-endian)
+            // [4]      uint8   sample_count (always 5)
+            // [5:6]    uint16  start_seq    (little-endian)
+            // [7:8]    int16   mpu_temp_raw (little-endian)
+            // [9:10]   uint16  battery_level_percent (little-endian, 0-10000)
+            // [11:24]  sample 1 (14 bytes)
+            // ... up to sample 5
+
+            const esp32TimestampMs = dataView.getUint32(offset + 0, true); // true for little-endian
+            const sampleCount = dataView.getUint8(offset + 4);
+            const startSeq = dataView.getUint16(offset + 5, true); // true for little-endian
+            const mpuTempRaw = dataView.getInt16(offset + 7, true); // true for little-endian
+            const batteryLevelRaw = dataView.getUint16(offset + 9, true); // true for little-endian
+            const batteryPercent = batteryLevelRaw / 100.0; // Convert from 0-10000 to 0.00-100.00%
+
+            const samples = [];
+            for (let i = 0; i < sampleCount; i++) {
+                const sampleOffset = offset + 11 + (i * 14); // Offset starts at 11 now
+                const ax = dataView.getInt16(sampleOffset + 0, true);
+                const ay = dataView.getInt16(sampleOffset + 2, true);
+                const az = dataView.getInt16(sampleOffset + 4, true);
+                const gx = dataView.getInt16(sampleOffset + 6, true);
+                const gy = dataView.getInt16(sampleOffset + 8, true);
+                const gz = dataView.getInt16(sampleOffset + 10, true);
+                samples.push({ ax, ay, az, gx, gy, gz });
+            }
+
+            // Calculate MPU temperature in Celsius
+            const mpuTempCelsius = rawTempToCelsius(mpuTempRaw);
+
+            return { esp32TimestampMs, sampleCount, startSeq, mpuTempRaw, mpuTempCelsius, batteryLevelRaw, batteryPercent, samples };
+        }
+
+
+        // --- Button Event Handlers ---
+
+        connectButton.addEventListener('click', async () => {
+            if (!navigator.bluetooth) {
+                logError('Web Bluetooth API is not available in your browser.');
+                return;
+            }
+
+            try {
+                logStatus('Requesting Bluetooth Device...');
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'TREMOR_IMU' }], // Match the name from your ESP32
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                logStatus(`Connecting to Device: ${bluetoothDevice.name}...`);
+                server = await bluetoothDevice.gatt.connect();
+
+                logStatus('Getting Service...');
+                service = await server.getPrimaryService(SERVICE_UUID);
+
+                logStatus('Getting Characteristic...');
+                characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+
+                // *** CRITICAL: Request the larger MTU before starting notifications ***
+                logStatus('Requesting larger MTU...');
+                const maxMtu = 256; // As requested by your ESP32 code
+                try {
+                    const requestedMtu = await server.requestMtu(maxMtu);
+                    logStatus(`MTU set to: ${requestedMtu} (Requested: ${maxMtu})`);
+                } catch (error) {
+                     // MTU request might fail depending on the OS/browser/client capability.
+                     // The connection might still work if the default MTU is sufficient (>= 81),
+                     // but it's safer to assume it's needed based on your code's design.
+                     logStatus(`MTU request failed: ${error.message}. Default MTU might be insufficient for 81-byte packets.`);
+                     // Optionally, warn the user or proceed anyway if you know the default MTU is large enough
+                }
+
+
+                logStatus('Starting Notifications...');
+                await characteristic.startNotifications();
+
+                // Add the event listener for characteristic value changes (incoming data)
+                characteristic.addEventListener('characteristicvaluechanged', (event) => {
+                    const value = event.target.value;
+                    // Get high-resolution timestamp when packet is received by the browser
+                    const receiveTimestamp = performance.now();
+                    const receiveTimeMs = Math.round(receiveTimestamp);
+
+                    // Decode the incoming packet
+                    try {
+                        const decoded = decodePacket(value.buffer);
+                        // Log ESP32 timestamp, sequence number, browser receive time, MPU temp, and simulated battery
+                        logData(`ESP32_Ts: ${decoded.esp32TimestampMs}ms, Seq: ${decoded.startSeq}, Recv_Ts: ${receiveTimeMs}ms, MPU_Temp: ${decoded.mpuTempCelsius.toFixed(2)}°C, Batt: ${decoded.batteryPercent.toFixed(2)}%, Samples: ${decoded.samples.length}`);
+                        // Optional: Log raw values for debugging (uncomment if needed)
+                        // console.log(`ESP32_Ts: ${decoded.esp32TimestampMs}ms, Recv_Ts: ${receiveTimeMs}ms - Seq: ${decoded.startSeq}, MPU_Temp_Raw: ${decoded.mpuTempRaw}, Batt_Raw: ${decoded.batteryLevelRaw}`, decoded.samples);
+                    } catch (decodeErr) {
+                        logError(`Failed to decode packet at browser time ${receiveTimeMs}ms: ${decodeErr.message}`);
+                        console.error(decodeErr);
+                    }
+                });
+
+                logStatus('Connected and listening for data with ESP32 Ts, MPU Temp, Sim Batt!');
+                connectButton.disabled = true;
+                disconnectButton.disabled = false;
+
+            } catch (error) {
+                logError(`Connection failed: ${error.message}`);
+            }
+        });
+
+        disconnectButton.addEventListener('click', () => {
+            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                bluetoothDevice.gatt.disconnect();
+                logStatus('Disconnected by user.');
+            } else {
+                 logStatus('No active connection to disconnect.');
+            }
+        });
+
+        // Handle disconnection gracefully
+        window.addEventListener('beforeunload', () => {
+             if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                 bluetoothDevice.gatt.disconnect();
+             }
+        });
+
+    </script>
+
+</body>
+</html>
