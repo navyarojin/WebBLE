@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IMU BLE Logger</title>
+  <title>XIAO ESP32-C3 MPU6050 BLE Logger</title>
   <style>
     :root {
       color-scheme: light;
@@ -222,7 +222,9 @@
     const CTRL_CHAR_UUID = "7b3f0003-2d7a-4c1a-9b6e-4b5f0a000001";
     const PACKET_SIZE = 81;
     const MAGIC = 0x314D5549;
-    const MAX_VISIBLE_ROWS = 1000;
+    const MAX_VISIBLE_ROWS = 300;
+    const UI_UPDATE_MS = 100;
+    const TABLE_UPDATE_MS = 250;
 
     let device;
     let imuCharacteristic;
@@ -232,6 +234,10 @@
     let lastCounter = null;
     let missedPackets = 0;
     let receivedPackets = 0;
+    let latestSample = null;
+    let pendingRows = [];
+    let lastUiUpdate = 0;
+    let lastTableUpdate = 0;
 
     const $ = (id) => document.getElementById(id);
     const connectBtn = $("connectBtn");
@@ -311,7 +317,12 @@
       if (!ctrlCharacteristic) {
         return;
       }
-      await ctrlCharacteristic.writeValue(new TextEncoder().encode(command));
+      const value = new TextEncoder().encode(command);
+      if (ctrlCharacteristic.writeValueWithoutResponse) {
+        await ctrlCharacteristic.writeValueWithoutResponse(value);
+      } else {
+        await ctrlCharacteristic.writeValue(value);
+      }
     }
 
     async function resetLogger() {
@@ -321,6 +332,8 @@
       lastCounter = null;
       missedPackets = 0;
       receivedPackets = 0;
+      latestSample = null;
+      pendingRows = [];
       logBody.innerHTML = "";
       updateStats();
       startBtn.disabled = false;
@@ -335,6 +348,8 @@
       lastCounter = null;
       missedPackets = 0;
       receivedPackets = 0;
+      latestSample = null;
+      pendingRows = [];
       updateStats();
       await writeCommand("S");
       isRecording = true;
@@ -347,6 +362,11 @@
     async function stopRecording() {
       await writeCommand("P");
       isRecording = false;
+      flushTableRows();
+      if (latestSample) {
+        updateLive(latestSample);
+      }
+      updateStats();
       startBtn.disabled = false;
       stopBtn.disabled = true;
       downloadBtn.disabled = samples.length === 0;
@@ -360,12 +380,13 @@
       }
 
       trackLoss(sample.counter);
-      updateLive(sample);
-      updateStats();
+      latestSample = sample;
+      scheduleUiUpdate();
 
       if (isRecording) {
         samples.push({ ...sample, missedTotal: missedPackets });
-        appendTableRow(sample);
+        pendingRows.push({ ...sample, missedTotal: missedPackets });
+        scheduleTableUpdate();
       }
     }
 
@@ -408,6 +429,21 @@
       receivedPackets += 1;
     }
 
+    function scheduleUiUpdate() {
+      const now = performance.now();
+      if (now - lastUiUpdate < UI_UPDATE_MS) {
+        return;
+      }
+
+      lastUiUpdate = now;
+      requestAnimationFrame(() => {
+        if (latestSample) {
+          updateLive(latestSample);
+        }
+        updateStats();
+      });
+    }
+
     function updateLive(sample) {
       fields.millis.textContent = sample.millis;
       fields.counter.textContent = sample.counter;
@@ -428,21 +464,42 @@
       fields.loss.textContent = `${loss.toFixed(3)}%`;
     }
 
-    function appendTableRow(sample) {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td>${sample.millis}</td>
-        <td>${sample.ax}</td>
-        <td>${sample.ay}</td>
-        <td>${sample.az}</td>
-        <td>${sample.tempC.toFixed(2)}</td>
-        <td>${sample.gx}</td>
-        <td>${sample.gy}</td>
-        <td>${sample.gz}</td>
-        <td>${sample.counter}</td>
-        <td>${missedPackets}</td>
-      `;
-      logBody.appendChild(row);
+    function scheduleTableUpdate() {
+      const now = performance.now();
+      if (now - lastTableUpdate < TABLE_UPDATE_MS) {
+        return;
+      }
+
+      lastTableUpdate = now;
+      setTimeout(flushTableRows, 0);
+    }
+
+    function flushTableRows() {
+      if (pendingRows.length === 0) {
+        return;
+      }
+
+      const rows = pendingRows.splice(0, pendingRows.length);
+      const fragment = document.createDocumentFragment();
+
+      for (const sample of rows) {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${sample.millis}</td>
+          <td>${sample.ax}</td>
+          <td>${sample.ay}</td>
+          <td>${sample.az}</td>
+          <td>${sample.tempC.toFixed(2)}</td>
+          <td>${sample.gx}</td>
+          <td>${sample.gy}</td>
+          <td>${sample.gz}</td>
+          <td>${sample.counter}</td>
+          <td>${sample.missedTotal}</td>
+        `;
+        fragment.appendChild(row);
+      }
+
+      logBody.appendChild(fragment);
 
       while (logBody.children.length > MAX_VISIBLE_ROWS) {
         logBody.removeChild(logBody.firstChild);
