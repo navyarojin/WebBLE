@@ -163,7 +163,7 @@
 </head>
 <body>
   <main>
-    <h1>XIAO ESP32-C3 MPU6050 BLE Logger</h1>
+    <h1>IMU BLE Logger</h1>
 
     <section class="toolbar">
       <button id="connectBtn" class="primary">Connect</button>
@@ -224,6 +224,7 @@
     const SAMPLE_RECORD_SIZE = 22;
     const PACKET_HEADER_SIZE = 12;
     const PACKET_SIZE = PACKET_HEADER_SIZE + (SAMPLES_PER_PACKET * SAMPLE_RECORD_SIZE);
+    const LEGACY_PACKET_SIZE = 81;
     const MAGIC = 0x314D5549;
     const MAX_VISIBLE_ROWS = 300;
     const UI_UPDATE_MS = 100;
@@ -241,6 +242,9 @@
     let pendingRows = [];
     let lastUiUpdate = 0;
     let lastTableUpdate = 0;
+    let notificationCount = 0;
+    let badPacketCount = 0;
+    let noDataTimer = null;
 
     const $ = (id) => document.getElementById(id);
     const connectBtn = $("connectBtn");
@@ -320,12 +324,7 @@
       if (!ctrlCharacteristic) {
         return;
       }
-      const value = new TextEncoder().encode(command);
-      if (ctrlCharacteristic.writeValueWithoutResponse) {
-        await ctrlCharacteristic.writeValueWithoutResponse(value);
-      } else {
-        await ctrlCharacteristic.writeValue(value);
-      }
+      await ctrlCharacteristic.writeValue(new TextEncoder().encode(command));
     }
 
     async function resetLogger() {
@@ -337,6 +336,9 @@
       receivedPackets = 0;
       latestSample = null;
       pendingRows = [];
+      notificationCount = 0;
+      badPacketCount = 0;
+      clearNoDataTimer();
       logBody.innerHTML = "";
       updateStats();
       startBtn.disabled = false;
@@ -353,6 +355,9 @@
       receivedPackets = 0;
       latestSample = null;
       pendingRows = [];
+      notificationCount = 0;
+      badPacketCount = 0;
+      clearNoDataTimer();
       updateStats();
       await writeCommand("S");
       isRecording = true;
@@ -360,11 +365,17 @@
       stopBtn.disabled = false;
       downloadBtn.disabled = true;
       statusEl.textContent = "Recording at 200 Hz...";
+      noDataTimer = setTimeout(() => {
+        if (isRecording && notificationCount === 0) {
+          statusEl.textContent = "Recording command sent, but no BLE notifications received. Check that the latest .ino is uploaded and the MPU6050 is detected.";
+        }
+      }, 2500);
     }
 
     async function stopRecording() {
       await writeCommand("P");
       isRecording = false;
+      clearNoDataTimer();
       flushTableRows();
       if (latestSample) {
         updateLive(latestSample);
@@ -377,8 +388,12 @@
     }
 
     function handleNotification(event) {
+      notificationCount += 1;
+      clearNoDataTimer();
       const decoded = decodePacket(event.target.value);
       if (!decoded) {
+        badPacketCount += 1;
+        statusEl.textContent = `Received ${notificationCount} notifications, but ${badPacketCount} had an unexpected format.`;
         return;
       }
 
@@ -399,14 +414,34 @@
     }
 
     function decodePacket(view) {
-      if (view.byteLength !== PACKET_SIZE) {
-        console.warn(`Unexpected packet size: ${view.byteLength}`);
-        return null;
-      }
-
       const magic = view.getUint32(0, true);
       if (magic !== MAGIC) {
         console.warn(`Bad packet magic: 0x${magic.toString(16)}`);
+        return null;
+      }
+
+      if (view.byteLength === LEGACY_PACKET_SIZE) {
+        const tempRaw = view.getInt16(18, true);
+        return {
+          batchCounter: 0,
+          samples: [{
+            counter: view.getUint32(4, true),
+            millis: view.getUint32(8, true),
+            ax: view.getInt16(12, true),
+            ay: view.getInt16(14, true),
+            az: view.getInt16(16, true),
+            tempRaw,
+            tempC: tempRaw / 340.0 + 36.53,
+            gx: view.getInt16(20, true),
+            gy: view.getInt16(22, true),
+            gz: view.getInt16(24, true),
+            sampleRateHz: view.getUint8(26)
+          }]
+        };
+      }
+
+      if (view.byteLength !== PACKET_SIZE) {
+        console.warn(`Unexpected packet size: ${view.byteLength}`);
         return null;
       }
 
@@ -524,6 +559,13 @@
 
       while (logBody.children.length > MAX_VISIBLE_ROWS) {
         logBody.removeChild(logBody.firstChild);
+      }
+    }
+
+    function clearNoDataTimer() {
+      if (noDataTimer) {
+        clearTimeout(noDataTimer);
+        noDataTimer = null;
       }
     }
 
