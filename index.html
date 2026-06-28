@@ -1,201 +1,266 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Web Bluetooth IMU Logger</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IMU BLE Logger</title>
   <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --text: #17202a;
+      --muted: #627084;
+      --line: #d9dee7;
+      --accent: #0b7285;
+      --danger: #b42318;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
+      margin: 0;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      margin: 20px;
-      background: #f6f7f9;
-      color: #1d1f23;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    main {
+      width: min(1180px, calc(100% - 24px));
+      margin: 18px auto;
     }
 
     h1 {
+      margin: 0 0 14px;
+      font-size: clamp(1.4rem, 3vw, 2rem);
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+      letter-spacing: 0;
+    }
+
+    .toolbar,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
       margin-bottom: 12px;
     }
 
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
     button {
-      padding: 10px 14px;
-      margin: 4px;
-      border: 1px solid #999;
+      min-height: 42px;
+      padding: 0 14px;
+      border: 1px solid #aeb8c6;
       border-radius: 6px;
-      background: white;
+      background: #fff;
+      color: var(--text);
+      font-size: 0.95rem;
       cursor: pointer;
-      font-size: 14px;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    button.danger {
+      color: var(--danger);
     }
 
     button:disabled {
-      opacity: 0.5;
+      opacity: 0.48;
       cursor: not-allowed;
     }
 
-    .panel {
-      background: white;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      padding: 14px;
-      margin: 14px 0;
+    #status {
+      flex: 1 1 220px;
+      color: var(--muted);
+      font-size: 0.95rem;
+      min-width: 0;
     }
 
-    .live-grid {
+    .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
       gap: 8px;
     }
 
-    .value {
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
       padding: 10px;
-      background: #f0f2f5;
-      border-radius: 6px;
+      background: #fafbfc;
+      min-width: 0;
     }
 
     .label {
-      font-size: 12px;
-      color: #555;
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-bottom: 4px;
     }
 
-    .number {
-      font-size: 18px;
+    .value {
       font-variant-numeric: tabular-nums;
+      font-size: 1.08rem;
+      overflow-wrap: anywhere;
+    }
+
+    .table-wrap {
+      max-height: 430px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      background: white;
-      font-size: 13px;
+      font-size: 0.84rem;
     }
 
-    th, td {
-      border: 1px solid #ddd;
-      padding: 6px;
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 6px 8px;
       text-align: right;
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
 
     th {
-      background: #eceff3;
       position: sticky;
       top: 0;
+      background: #edf1f5;
+      z-index: 1;
     }
 
-    .table-wrap {
-      max-height: 420px;
-      overflow: auto;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-    }
+    @media (max-width: 560px) {
+      main {
+        width: min(100% - 16px, 1180px);
+        margin-top: 8px;
+      }
 
-    #status {
-      margin-top: 8px;
-      color: #444;
+      button {
+        flex: 1 1 calc(50% - 8px);
+      }
     }
   </style>
 </head>
 <body>
-  <h1>Web Bluetooth IMU Logger</h1>
+  <main>
+    <h1>XIAO ESP32-C3 MPU6050 BLE Logger</h1>
 
-  <div class="panel">
-    <button id="connectBtn">Connect</button>
-    <button id="startBtn" disabled>Start Logging</button>
-    <button id="stopBtn" disabled>Stop Logging</button>
-    <button id="downloadBtn" disabled>Download CSV</button>
-    <div id="status">Disconnected</div>
-  </div>
+    <section class="toolbar">
+      <button id="connectBtn" class="primary">Connect</button>
+      <button id="resetBtn" disabled>Reset</button>
+      <button id="startBtn" disabled>Start Recording</button>
+      <button id="stopBtn" class="danger" disabled>Stop Recording</button>
+      <button id="downloadBtn" disabled>Download CSV</button>
+      <div id="status">Disconnected</div>
+    </section>
 
-  <div class="panel">
-    <h2>Live Sample</h2>
-    <div class="live-grid">
-      <div class="value">
-        <div class="label">millis</div>
-        <div class="number" id="millisVal">-</div>
+    <section class="panel">
+      <h2>Live Data</h2>
+      <div class="grid">
+        <div class="metric"><div class="label">millis</div><div class="value" id="millisVal">-</div></div>
+        <div class="metric"><div class="label">counter</div><div class="value" id="counterVal">-</div></div>
+        <div class="metric"><div class="label">ax raw</div><div class="value" id="axVal">-</div></div>
+        <div class="metric"><div class="label">ay raw</div><div class="value" id="ayVal">-</div></div>
+        <div class="metric"><div class="label">az raw</div><div class="value" id="azVal">-</div></div>
+        <div class="metric"><div class="label">gx raw</div><div class="value" id="gxVal">-</div></div>
+        <div class="metric"><div class="label">gy raw</div><div class="value" id="gyVal">-</div></div>
+        <div class="metric"><div class="label">gz raw</div><div class="value" id="gzVal">-</div></div>
+        <div class="metric"><div class="label">temperature C</div><div class="value" id="tempVal">-</div></div>
+        <div class="metric"><div class="label">samples</div><div class="value" id="sampleCountVal">0</div></div>
+        <div class="metric"><div class="label">missed packets</div><div class="value" id="missedVal">0</div></div>
+        <div class="metric"><div class="label">packet loss</div><div class="value" id="lossVal">0%</div></div>
       </div>
-      <div class="value">
-        <div class="label">counter</div>
-        <div class="number" id="counterVal">-</div>
-      </div>
-      <div class="value">
-        <div class="label">ax</div>
-        <div class="number" id="axVal">-</div>
-      </div>
-      <div class="value">
-        <div class="label">ay</div>
-        <div class="number" id="ayVal">-</div>
-      </div>
-      <div class="value">
-        <div class="label">az</div>
-        <div class="number" id="azVal">-</div>
-      </div>
-      <div class="value">
-        <div class="label">gx</div>
-        <div class="number" id="gxVal">-</div>
-      </div>
-      <div class="value">
-        <div class="label">gy</div>
-        <div class="number" id="gyVal">-</div>
-      </div>
-      <div class="value">
-        <div class="label">gz</div>
-        <div class="number" id="gzVal">-</div>
-      </div>
-    </div>
-  </div>
+    </section>
 
-  <div class="panel">
-    <h2>Logged Samples</h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>millis</th>
-            <th>ax</th>
-            <th>ay</th>
-            <th>az</th>
-            <th>gx</th>
-            <th>gy</th>
-            <th>gz</th>
-          </tr>
-        </thead>
-        <tbody id="logBody"></tbody>
-      </table>
-    </div>
-  </div>
+    <section class="panel">
+      <h2>Recorded Samples</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>millis</th>
+              <th>ax</th>
+              <th>ay</th>
+              <th>az</th>
+              <th>temp_c</th>
+              <th>gx</th>
+              <th>gy</th>
+              <th>gz</th>
+              <th>counter</th>
+              <th>missed_total</th>
+            </tr>
+          </thead>
+          <tbody id="logBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
 
   <script>
     const SERVICE_UUID = "7b3f0001-2d7a-4c1a-9b6e-4b5f0a000001";
     const IMU_CHAR_UUID = "7b3f0002-2d7a-4c1a-9b6e-4b5f0a000001";
+    const CTRL_CHAR_UUID = "7b3f0003-2d7a-4c1a-9b6e-4b5f0a000001";
     const PACKET_SIZE = 81;
     const MAGIC = 0x314D5549;
+    const MAX_VISIBLE_ROWS = 1000;
 
-    let device = null;
-    let server = null;
-    let imuCharacteristic = null;
-    let isLogging = false;
+    let device;
+    let imuCharacteristic;
+    let ctrlCharacteristic;
+    let isRecording = false;
     let samples = [];
+    let lastCounter = null;
+    let missedPackets = 0;
+    let receivedPackets = 0;
 
-    const connectBtn = document.getElementById("connectBtn");
-    const startBtn = document.getElementById("startBtn");
-    const stopBtn = document.getElementById("stopBtn");
-    const downloadBtn = document.getElementById("downloadBtn");
-    const statusEl = document.getElementById("status");
-    const logBody = document.getElementById("logBody");
+    const $ = (id) => document.getElementById(id);
+    const connectBtn = $("connectBtn");
+    const resetBtn = $("resetBtn");
+    const startBtn = $("startBtn");
+    const stopBtn = $("stopBtn");
+    const downloadBtn = $("downloadBtn");
+    const statusEl = $("status");
+    const logBody = $("logBody");
 
     const fields = {
-      millis: document.getElementById("millisVal"),
-      counter: document.getElementById("counterVal"),
-      ax: document.getElementById("axVal"),
-      ay: document.getElementById("ayVal"),
-      az: document.getElementById("azVal"),
-      gx: document.getElementById("gxVal"),
-      gy: document.getElementById("gyVal"),
-      gz: document.getElementById("gzVal")
+      millis: $("millisVal"),
+      counter: $("counterVal"),
+      ax: $("axVal"),
+      ay: $("ayVal"),
+      az: $("azVal"),
+      gx: $("gxVal"),
+      gy: $("gyVal"),
+      gz: $("gzVal"),
+      temp: $("tempVal"),
+      sampleCount: $("sampleCountVal"),
+      missed: $("missedVal"),
+      loss: $("lossVal")
     };
 
     connectBtn.addEventListener("click", connectBLE);
-    startBtn.addEventListener("click", startLogging);
-    stopBtn.addEventListener("click", stopLogging);
+    resetBtn.addEventListener("click", resetLogger);
+    startBtn.addEventListener("click", startRecording);
+    stopBtn.addEventListener("click", stopRecording);
     downloadBtn.addEventListener("click", downloadCSV);
 
     async function connectBLE() {
@@ -205,8 +270,7 @@
       }
 
       try {
-        statusEl.textContent = "Requesting Bluetooth device...";
-
+        statusEl.textContent = "Selecting BLE device...";
         device = await navigator.bluetooth.requestDevice({
           filters: [{ namePrefix: "XIAO-ESP32C3-IMU" }],
           optionalServices: [SERVICE_UUID]
@@ -215,97 +279,136 @@
         device.addEventListener("gattserverdisconnected", onDisconnected);
 
         statusEl.textContent = "Connecting...";
-        server = await device.gatt.connect();
-
+        const server = await device.gatt.connect();
         const service = await server.getPrimaryService(SERVICE_UUID);
         imuCharacteristic = await service.getCharacteristic(IMU_CHAR_UUID);
+        ctrlCharacteristic = await service.getCharacteristic(CTRL_CHAR_UUID);
 
         await imuCharacteristic.startNotifications();
         imuCharacteristic.addEventListener("characteristicvaluechanged", handleNotification);
 
-        statusEl.textContent = `Connected to ${device.name}`;
         connectBtn.disabled = true;
+        resetBtn.disabled = false;
         startBtn.disabled = false;
         stopBtn.disabled = true;
+        statusEl.textContent = `Connected to ${device.name || "IMU logger"}`;
       } catch (error) {
         statusEl.textContent = `Connection failed: ${error.message}`;
       }
     }
 
     function onDisconnected() {
-      statusEl.textContent = "Disconnected";
+      isRecording = false;
       connectBtn.disabled = false;
+      resetBtn.disabled = true;
       startBtn.disabled = true;
       stopBtn.disabled = true;
-      isLogging = false;
+      downloadBtn.disabled = samples.length === 0;
+      statusEl.textContent = "Disconnected";
     }
 
-    function startLogging() {
+    async function writeCommand(command) {
+      if (!ctrlCharacteristic) {
+        return;
+      }
+      await ctrlCharacteristic.writeValue(new TextEncoder().encode(command));
+    }
+
+    async function resetLogger() {
+      await writeCommand("R");
+      isRecording = false;
+      samples = [];
+      lastCounter = null;
+      missedPackets = 0;
+      receivedPackets = 0;
+      logBody.innerHTML = "";
+      updateStats();
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      downloadBtn.disabled = true;
+      statusEl.textContent = "Reset complete";
+    }
+
+    async function startRecording() {
       samples = [];
       logBody.innerHTML = "";
-      isLogging = true;
-
+      lastCounter = null;
+      missedPackets = 0;
+      receivedPackets = 0;
+      updateStats();
+      await writeCommand("S");
+      isRecording = true;
       startBtn.disabled = true;
       stopBtn.disabled = false;
       downloadBtn.disabled = true;
-
-      statusEl.textContent = "Logging...";
+      statusEl.textContent = "Recording at 200 Hz...";
     }
 
-    function stopLogging() {
-      isLogging = false;
-
+    async function stopRecording() {
+      await writeCommand("P");
+      isRecording = false;
       startBtn.disabled = false;
       stopBtn.disabled = true;
       downloadBtn.disabled = samples.length === 0;
-
-      statusEl.textContent = `Stopped. ${samples.length} samples logged.`;
+      statusEl.textContent = `Stopped. ${samples.length} samples recorded, ${missedPackets} packets missed.`;
     }
 
     function handleNotification(event) {
-      const value = event.target.value;
-
-      if (value.byteLength !== PACKET_SIZE) {
-        console.warn(`Unexpected packet size: ${value.byteLength}`);
-        return;
-      }
-
-      const sample = decodePacket(value);
-
+      const sample = decodePacket(event.target.value);
       if (!sample) {
         return;
       }
 
-      updateLiveDisplay(sample);
+      trackLoss(sample.counter);
+      updateLive(sample);
+      updateStats();
 
-      if (isLogging) {
-        samples.push(sample);
+      if (isRecording) {
+        samples.push({ ...sample, missedTotal: missedPackets });
         appendTableRow(sample);
       }
     }
 
     function decodePacket(view) {
-      const magic = view.getUint32(0, true);
-
-      if (magic !== MAGIC) {
-        console.warn("Bad packet magic:", magic.toString(16));
+      if (view.byteLength !== PACKET_SIZE) {
+        console.warn(`Unexpected packet size: ${view.byteLength}`);
         return null;
       }
 
+      const magic = view.getUint32(0, true);
+      if (magic !== MAGIC) {
+        console.warn(`Bad packet magic: 0x${magic.toString(16)}`);
+        return null;
+      }
+
+      const tempRaw = view.getInt16(18, true);
       return {
         counter: view.getUint32(4, true),
         millis: view.getUint32(8, true),
         ax: view.getInt16(12, true),
         ay: view.getInt16(14, true),
         az: view.getInt16(16, true),
-        gx: view.getInt16(18, true),
-        gy: view.getInt16(20, true),
-        gz: view.getInt16(22, true),
-        sampleRateHz: view.getUint8(24)
+        tempRaw,
+        tempC: tempRaw / 340.0 + 36.53,
+        gx: view.getInt16(20, true),
+        gy: view.getInt16(22, true),
+        gz: view.getInt16(24, true),
+        sampleRateHz: view.getUint8(26)
       };
     }
 
-    function updateLiveDisplay(sample) {
+    function trackLoss(counter) {
+      if (lastCounter !== null) {
+        const expected = (lastCounter + 1) >>> 0;
+        if (counter !== expected) {
+          missedPackets += (counter - expected) >>> 0;
+        }
+      }
+      lastCounter = counter;
+      receivedPackets += 1;
+    }
+
+    function updateLive(sample) {
       fields.millis.textContent = sample.millis;
       fields.counter.textContent = sample.counter;
       fields.ax.textContent = sample.ax;
@@ -314,24 +417,34 @@
       fields.gx.textContent = sample.gx;
       fields.gy.textContent = sample.gy;
       fields.gz.textContent = sample.gz;
+      fields.temp.textContent = sample.tempC.toFixed(2);
+    }
+
+    function updateStats() {
+      fields.sampleCount.textContent = samples.length;
+      fields.missed.textContent = missedPackets;
+      const totalExpected = receivedPackets + missedPackets;
+      const loss = totalExpected > 0 ? (missedPackets / totalExpected) * 100 : 0;
+      fields.loss.textContent = `${loss.toFixed(3)}%`;
     }
 
     function appendTableRow(sample) {
       const row = document.createElement("tr");
-
       row.innerHTML = `
         <td>${sample.millis}</td>
         <td>${sample.ax}</td>
         <td>${sample.ay}</td>
         <td>${sample.az}</td>
+        <td>${sample.tempC.toFixed(2)}</td>
         <td>${sample.gx}</td>
         <td>${sample.gy}</td>
         <td>${sample.gz}</td>
+        <td>${sample.counter}</td>
+        <td>${missedPackets}</td>
       `;
-
       logBody.appendChild(row);
 
-      if (logBody.children.length > 1000) {
+      while (logBody.children.length > MAX_VISIBLE_ROWS) {
         logBody.removeChild(logBody.firstChild);
       }
     }
@@ -341,22 +454,30 @@
         return;
       }
 
-      const lines = ["millis,ax,ay,az,gx,gy,gz"];
-
-      for (const s of samples) {
-        lines.push(`${s.millis},${s.ax},${s.ay},${s.az},${s.gx},${s.gy},${s.gz}`);
+      const lines = ["millis,ax,ay,az,temp_c,gx,gy,gz,counter,missed_total"];
+      for (const sample of samples) {
+        lines.push([
+          sample.millis,
+          sample.ax,
+          sample.ay,
+          sample.az,
+          sample.tempC.toFixed(4),
+          sample.gx,
+          sample.gy,
+          sample.gz,
+          sample.counter,
+          sample.missedTotal
+        ].join(","));
       }
 
       const blob = new Blob([lines.join("\n")], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `imu_log_${Date.now()}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `xiao_mpu6050_${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
       URL.revokeObjectURL(url);
     }
   </script>
