@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TREMOR_IMU BLE Reader (81-byte format)</title>
+    <title>TremorBLE Reader (81-byte format)</title>
     <style>
         body { font-family: Arial, sans-serif; }
         #status { margin-bottom: 10px; }
@@ -12,7 +12,7 @@
     </style>
 </head>
 <body>
-    <h1>Connect to TREMOR_IMU (81-byte format)</h1>
+    <h1>Connect to TremorBLE (81-byte format)</h1>
     <div id="status">Ready to connect.</div>
     <button id="connectButton">Connect to ESP32-C3</button>
     <button id="disconnectButton" disabled>Disconnect</button>
@@ -74,7 +74,7 @@
             try {
                 logStatus('Requesting Bluetooth Device...');
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: 'TREMOR_IMU' }],
+                    filters: [{ name: 'TremorBLE' }],
                     optionalServices: [SERVICE_UUID]
                 });
                 logStatus(`Connecting to Device: ${bluetoothDevice.name}...`);
