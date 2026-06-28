@@ -220,7 +220,10 @@
     const SERVICE_UUID = "7b3f0001-2d7a-4c1a-9b6e-4b5f0a000001";
     const IMU_CHAR_UUID = "7b3f0002-2d7a-4c1a-9b6e-4b5f0a000001";
     const CTRL_CHAR_UUID = "7b3f0003-2d7a-4c1a-9b6e-4b5f0a000001";
-    const PACKET_SIZE = 81;
+    const SAMPLES_PER_PACKET = 4;
+    const SAMPLE_RECORD_SIZE = 22;
+    const PACKET_HEADER_SIZE = 12;
+    const PACKET_SIZE = PACKET_HEADER_SIZE + (SAMPLES_PER_PACKET * SAMPLE_RECORD_SIZE);
     const MAGIC = 0x314D5549;
     const MAX_VISIBLE_ROWS = 300;
     const UI_UPDATE_MS = 100;
@@ -374,18 +377,23 @@
     }
 
     function handleNotification(event) {
-      const sample = decodePacket(event.target.value);
-      if (!sample) {
+      const decoded = decodePacket(event.target.value);
+      if (!decoded) {
         return;
       }
 
-      trackLoss(sample.counter);
-      latestSample = sample;
-      scheduleUiUpdate();
+      for (const sample of decoded.samples) {
+        trackLoss(sample.counter);
+        latestSample = sample;
 
+        if (isRecording) {
+          samples.push({ ...sample, missedTotal: missedPackets, batchCounter: decoded.batchCounter });
+          pendingRows.push({ ...sample, missedTotal: missedPackets });
+        }
+      }
+
+      scheduleUiUpdate();
       if (isRecording) {
-        samples.push({ ...sample, missedTotal: missedPackets });
-        pendingRows.push({ ...sample, missedTotal: missedPackets });
         scheduleTableUpdate();
       }
     }
@@ -402,19 +410,32 @@
         return null;
       }
 
-      const tempRaw = view.getInt16(18, true);
+      const batchCounter = view.getUint32(4, true);
+      const sampleCount = Math.min(view.getUint8(8), SAMPLES_PER_PACKET);
+      const sampleRateHz = view.getUint8(9);
+      const samples = [];
+
+      for (let i = 0; i < sampleCount; i++) {
+        const offset = PACKET_HEADER_SIZE + (i * SAMPLE_RECORD_SIZE);
+        const tempRaw = view.getInt16(offset + 14, true);
+        samples.push({
+          counter: view.getUint32(offset + 0, true),
+          millis: view.getUint32(offset + 4, true),
+          ax: view.getInt16(offset + 8, true),
+          ay: view.getInt16(offset + 10, true),
+          az: view.getInt16(offset + 12, true),
+          tempRaw,
+          tempC: tempRaw / 340.0 + 36.53,
+          gx: view.getInt16(offset + 16, true),
+          gy: view.getInt16(offset + 18, true),
+          gz: view.getInt16(offset + 20, true),
+          sampleRateHz
+        });
+      }
+
       return {
-        counter: view.getUint32(4, true),
-        millis: view.getUint32(8, true),
-        ax: view.getInt16(12, true),
-        ay: view.getInt16(14, true),
-        az: view.getInt16(16, true),
-        tempRaw,
-        tempC: tempRaw / 340.0 + 36.53,
-        gx: view.getInt16(20, true),
-        gy: view.getInt16(22, true),
-        gz: view.getInt16(24, true),
-        sampleRateHz: view.getUint8(26)
+        batchCounter,
+        samples
       };
     }
 
