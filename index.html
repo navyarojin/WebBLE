@@ -1,163 +1,364 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TREMOR_IMU BLE Reader</title>
-    <style>
-        body { font-family: Arial, sans-serif; }
-        #status { margin-bottom: 10px; }
-        #dataLog { width: 100%; height: 400px; overflow-y: scroll; white-space: pre-wrap; }
-        button { padding: 10px 20px; font-size: 16px; margin-right: 10px; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web Bluetooth IMU Logger</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 20px;
+      background: #f6f7f9;
+      color: #1d1f23;
+    }
+
+    h1 {
+      margin-bottom: 12px;
+    }
+
+    button {
+      padding: 10px 14px;
+      margin: 4px;
+      border: 1px solid #999;
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .panel {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 14px;
+      margin: 14px 0;
+    }
+
+    .live-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+    }
+
+    .value {
+      padding: 10px;
+      background: #f0f2f5;
+      border-radius: 6px;
+    }
+
+    .label {
+      font-size: 12px;
+      color: #555;
+    }
+
+    .number {
+      font-size: 18px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      font-size: 13px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 6px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    th {
+      background: #eceff3;
+      position: sticky;
+      top: 0;
+    }
+
+    .table-wrap {
+      max-height: 420px;
+      overflow: auto;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+    }
+
+    #status {
+      margin-top: 8px;
+      color: #444;
+    }
+  </style>
 </head>
 <body>
+  <h1>Web Bluetooth IMU Logger</h1>
 
-    <h1>Connect to TREMOR_IMU</h1>
-    <div id="status">Ready to connect.</div>
-    <button id="connectButton">Connect to ESP32-C3</button>
-    <button id="disconnectButton" disabled>Disconnect</button>
+  <div class="panel">
+    <button id="connectBtn">Connect</button>
+    <button id="startBtn" disabled>Start Logging</button>
+    <button id="stopBtn" disabled>Stop Logging</button>
+    <button id="downloadBtn" disabled>Download CSV</button>
+    <div id="status">Disconnected</div>
+  </div>
 
-    <h2>Data Stream:</h2>
-    <pre id="dataLog"></pre>
+  <div class="panel">
+    <h2>Live Sample</h2>
+    <div class="live-grid">
+      <div class="value">
+        <div class="label">millis</div>
+        <div class="number" id="millisVal">-</div>
+      </div>
+      <div class="value">
+        <div class="label">counter</div>
+        <div class="number" id="counterVal">-</div>
+      </div>
+      <div class="value">
+        <div class="label">ax</div>
+        <div class="number" id="axVal">-</div>
+      </div>
+      <div class="value">
+        <div class="label">ay</div>
+        <div class="number" id="ayVal">-</div>
+      </div>
+      <div class="value">
+        <div class="label">az</div>
+        <div class="number" id="azVal">-</div>
+      </div>
+      <div class="value">
+        <div class="label">gx</div>
+        <div class="number" id="gxVal">-</div>
+      </div>
+      <div class="value">
+        <div class="label">gy</div>
+        <div class="number" id="gyVal">-</div>
+      </div>
+      <div class="value">
+        <div class="label">gz</div>
+        <div class="number" id="gzVal">-</div>
+      </div>
+    </div>
+  </div>
 
-    <script>
-        const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-        const CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+  <div class="panel">
+    <h2>Logged Samples</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>millis</th>
+            <th>ax</th>
+            <th>ay</th>
+            <th>az</th>
+            <th>gx</th>
+            <th>gy</th>
+            <th>gz</th>
+          </tr>
+        </thead>
+        <tbody id="logBody"></tbody>
+      </table>
+    </div>
+  </div>
 
-        let bluetoothDevice = null;
-        let server = null;
-        let service = null;
-        let characteristic = null;
-        let dataLog = document.getElementById('dataLog');
-        let statusDiv = document.getElementById('status');
-        let connectButton = document.getElementById('connectButton');
-        let disconnectButton = document.getElementById('disconnectButton');
+  <script>
+    const SERVICE_UUID = "7b3f0001-2d7a-4c1a-9b6e-4b5f0a000001";
+    const IMU_CHAR_UUID = "7b3f0002-2d7a-4c1a-9b6e-4b5f0a000001";
+    const PACKET_SIZE = 81;
+    const MAGIC = 0x314D5549;
 
-        // --- Helper Functions ---
+    let device = null;
+    let server = null;
+    let imuCharacteristic = null;
+    let isLogging = false;
+    let samples = [];
 
-        function logData(message) {
-            const timestamp = new Date().toISOString();
-            dataLog.textContent += `[${timestamp}] ${message}\n`;
-            dataLog.scrollTop = dataLog.scrollHeight; // Auto-scroll
-        }
+    const connectBtn = document.getElementById("connectBtn");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const statusEl = document.getElementById("status");
+    const logBody = document.getElementById("logBody");
 
-        function logStatus(message) {
-            statusDiv.textContent = message;
-            console.log(`[Status] ${message}`);
-        }
+    const fields = {
+      millis: document.getElementById("millisVal"),
+      counter: document.getElementById("counterVal"),
+      ax: document.getElementById("axVal"),
+      ay: document.getElementById("ayVal"),
+      az: document.getElementById("azVal"),
+      gx: document.getElementById("gxVal"),
+      gy: document.getElementById("gyVal"),
+      gz: document.getElementById("gzVal")
+    };
 
-        function logError(message) {
-            logStatus(`ERROR: ${message}`);
-            console.error(message);
-        }
+    connectBtn.addEventListener("click", connectBLE);
+    startBtn.addEventListener("click", startLogging);
+    stopBtn.addEventListener("click", stopLogging);
+    downloadBtn.addEventListener("click", downloadCSV);
 
-        function decodePacket(dataView, offset = 0) {
-            // Assuming little-endian format as per your Arduino code
-            const sampleCount = dataView.getUint8(offset + 0);
-            const startSeq = dataView.getUint16(offset + 1, true); // true for little-endian
+    async function connectBLE() {
+      if (!navigator.bluetooth) {
+        statusEl.textContent = "Web Bluetooth is not available in this browser.";
+        return;
+      }
 
-            const samples = [];
-            for (let i = 0; i < sampleCount; i++) {
-                const sampleOffset = offset + 3 + (i * 14);
-                const ax = dataView.getInt16(sampleOffset + 0, true);
-                const ay = dataView.getInt16(sampleOffset + 2, true);
-                const az = dataView.getInt16(sampleOffset + 4, true);
-                const gx = dataView.getInt16(sampleOffset + 6, true);
-                const gy = dataView.getInt16(sampleOffset + 8, true);
-                const gz = dataView.getInt16(sampleOffset + 10, true);
-                samples.push({ ax, ay, az, gx, gy, gz });
-            }
+      try {
+        statusEl.textContent = "Requesting Bluetooth device...";
 
-            return { sampleCount, startSeq, samples };
-        }
-
-
-        // --- Button Event Handlers ---
-
-        connectButton.addEventListener('click', async () => {
-            if (!navigator.bluetooth) {
-                logError('Web Bluetooth API is not available in your browser.');
-                return;
-            }
-
-            try {
-                logStatus('Requesting Bluetooth Device...');
-                bluetoothDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: 'TREMOR_IMU' }], // Match the name from your ESP32
-                    optionalServices: [SERVICE_UUID]
-                });
-
-                logStatus(`Connecting to Device: ${bluetoothDevice.name}...`);
-                server = await bluetoothDevice.gatt.connect();
-
-                logStatus('Getting Service...');
-                service = await server.getPrimaryService(SERVICE_UUID);
-
-                logStatus('Getting Characteristic...');
-                characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
-
-                // *** CRITICAL: Request the larger MTU before starting notifications ***
-                logStatus('Requesting larger MTU...');
-                const maxMtu = 256; // As requested by your ESP32 code
-                try {
-                    const requestedMtu = await server.requestMtu(maxMtu);
-                    logStatus(`MTU set to: ${requestedMtu} (Requested: ${maxMtu})`);
-                } catch (error) {
-                     // MTU request might fail depending on the OS/browser/client capability.
-                     // The connection might still work if the default MTU is sufficient (>= 73),
-                     // but it's safer to assume it's needed based on your code's design.
-                     logStatus(`MTU request failed: ${error.message}. Default MTU might be insufficient for 73-byte packets.`);
-                     // Optionally, warn the user or proceed anyway if you know the default MTU is large enough
-                }
-
-
-                logStatus('Starting Notifications...');
-                await characteristic.startNotifications();
-
-                // Add the event listener for characteristic value changes (incoming data)
-                characteristic.addEventListener('characteristicvaluechanged', (event) => {
-                    const value = event.target.value;
-                    const timestamp = performance.now(); // High-res timestamp for analysis
-
-                    // Decode the incoming packet
-                    try {
-                        const decoded = decodePacket(value.buffer);
-                        logData(`Seq: ${decoded.startSeq}, Samples: ${decoded.samples.length}`);
-                        // Optional: Log raw values for debugging
-                        // console.log(decoded.samples);
-                    } catch (decodeErr) {
-                        logError(`Failed to decode packet: ${decodeErr.message}`);
-                        console.error(decodeErr);
-                    }
-                });
-
-                logStatus('Connected and listening for data!');
-                connectButton.disabled = true;
-                disconnectButton.disabled = false;
-
-            } catch (error) {
-                logError(`Connection failed: ${error.message}`);
-            }
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: "XIAO-ESP32C3-IMU" }],
+          optionalServices: [SERVICE_UUID]
         });
 
-        disconnectButton.addEventListener('click', () => {
-            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-                bluetoothDevice.gatt.disconnect();
-                logStatus('Disconnected by user.');
-            } else {
-                 logStatus('No active connection to disconnect.');
-            }
-        });
+        device.addEventListener("gattserverdisconnected", onDisconnected);
 
-        // Handle disconnection gracefully
-        window.addEventListener('beforeunload', () => {
-             if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-                 bluetoothDevice.gatt.disconnect();
-             }
-        });
+        statusEl.textContent = "Connecting...";
+        server = await device.gatt.connect();
 
-    </script>
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        imuCharacteristic = await service.getCharacteristic(IMU_CHAR_UUID);
 
+        await imuCharacteristic.startNotifications();
+        imuCharacteristic.addEventListener("characteristicvaluechanged", handleNotification);
+
+        statusEl.textContent = `Connected to ${device.name}`;
+        connectBtn.disabled = true;
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      } catch (error) {
+        statusEl.textContent = `Connection failed: ${error.message}`;
+      }
+    }
+
+    function onDisconnected() {
+      statusEl.textContent = "Disconnected";
+      connectBtn.disabled = false;
+      startBtn.disabled = true;
+      stopBtn.disabled = true;
+      isLogging = false;
+    }
+
+    function startLogging() {
+      samples = [];
+      logBody.innerHTML = "";
+      isLogging = true;
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      downloadBtn.disabled = true;
+
+      statusEl.textContent = "Logging...";
+    }
+
+    function stopLogging() {
+      isLogging = false;
+
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      downloadBtn.disabled = samples.length === 0;
+
+      statusEl.textContent = `Stopped. ${samples.length} samples logged.`;
+    }
+
+    function handleNotification(event) {
+      const value = event.target.value;
+
+      if (value.byteLength !== PACKET_SIZE) {
+        console.warn(`Unexpected packet size: ${value.byteLength}`);
+        return;
+      }
+
+      const sample = decodePacket(value);
+
+      if (!sample) {
+        return;
+      }
+
+      updateLiveDisplay(sample);
+
+      if (isLogging) {
+        samples.push(sample);
+        appendTableRow(sample);
+      }
+    }
+
+    function decodePacket(view) {
+      const magic = view.getUint32(0, true);
+
+      if (magic !== MAGIC) {
+        console.warn("Bad packet magic:", magic.toString(16));
+        return null;
+      }
+
+      return {
+        counter: view.getUint32(4, true),
+        millis: view.getUint32(8, true),
+        ax: view.getInt16(12, true),
+        ay: view.getInt16(14, true),
+        az: view.getInt16(16, true),
+        gx: view.getInt16(18, true),
+        gy: view.getInt16(20, true),
+        gz: view.getInt16(22, true),
+        sampleRateHz: view.getUint8(24)
+      };
+    }
+
+    function updateLiveDisplay(sample) {
+      fields.millis.textContent = sample.millis;
+      fields.counter.textContent = sample.counter;
+      fields.ax.textContent = sample.ax;
+      fields.ay.textContent = sample.ay;
+      fields.az.textContent = sample.az;
+      fields.gx.textContent = sample.gx;
+      fields.gy.textContent = sample.gy;
+      fields.gz.textContent = sample.gz;
+    }
+
+    function appendTableRow(sample) {
+      const row = document.createElement("tr");
+
+      row.innerHTML = `
+        <td>${sample.millis}</td>
+        <td>${sample.ax}</td>
+        <td>${sample.ay}</td>
+        <td>${sample.az}</td>
+        <td>${sample.gx}</td>
+        <td>${sample.gy}</td>
+        <td>${sample.gz}</td>
+      `;
+
+      logBody.appendChild(row);
+
+      if (logBody.children.length > 1000) {
+        logBody.removeChild(logBody.firstChild);
+      }
+    }
+
+    function downloadCSV() {
+      if (samples.length === 0) {
+        return;
+      }
+
+      const lines = ["millis,ax,ay,az,gx,gy,gz"];
+
+      for (const s of samples) {
+        lines.push(`${s.millis},${s.ax},${s.ay},${s.az},${s.gx},${s.gy},${s.gz}`);
+      }
+
+      const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `imu_log_${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      URL.revokeObjectURL(url);
+    }
+  </script>
 </body>
 </html>
